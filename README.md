@@ -207,26 +207,155 @@ Purpose-built for African and emerging markets with specialized infrastructure.
 ```
 protocol-contracts/
 ├── src/
-│   ├── core/                          # Core protocol logic
-│   │   ├── trading/                   # Trading engines (Perps, Spot, Margin)
-│   │   ├── events/                    # Event derivatives system
-│   │   ├── markets/                   # Market factory and management
-│   │   ├── oracles/                   # Multi-oracle price feed system
-│   │   └── data/                      # Protocol data storage
-│   ├── baskets/                       # Tokenized basket engine
-│   ├── vaults/                        # Liquidity, insurance, treasury
-│   ├── routers/                       # User-facing interaction layer
-│   ├── readers/                       # View functions and analytics
-│   ├── fees/                          # Fee calculation and distribution
-│   ├── access/                        # Role-based access control
-│   ├── security/                      # Circuit breakers, rate limiters
-│   ├── tokens/                        # ERC-20/ERC-721 implementations
-│   └── libraries/                     # Reusable utility libraries
-├── test/                              # Comprehensive test suite
-├── script/                            # Deployment and operational scripts
-├── config/                            # Network and protocol configuration
-├── docs/                              # Technical documentation
-└── keeper-bots/                       # Off-chain automation services
+│   ├── core/                                      # Core protocol logic
+│   │   ├── trading/                               # Trading engines
+│   │   │   ├── engines/
+│   │   │   │   ├── CrossMarginEngine.sol         # Cross-margin perpetuals
+│   │   │   │   ├── PerpEngine.sol                # Perpetual futures engine
+│   │   │   │   └── SpotEngine.sol                # Spot trading engine
+│   │   │   ├── FundingRateCalculator.sol         # Perp funding rate logic
+│   │   │   ├── LiquidationEngine.sol             # Position liquidation
+│   │   │   ├── OrderManager.sol                  # Order lifecycle management
+│   │   │   └── PositionManager.sol               # Position tracking
+│   │   ├── events/                               # Event derivatives system
+│   │   │   ├── EmergencyEvent.sol                # Unscheduled event markets
+│   │   │   ├── EventDerivative.sol               # Base event contract
+│   │   │   ├── EventFactory.sol                  # Create new event markets
+│   │   │   ├── EventSettlement.sol               # Settle event outcomes
+│   │   │   ├── OutcomeVerifier.sol               # Verify event results
+│   │   │   └── ScheduledEvent.sol                # Scheduled event markets
+│   │   ├── markets/                              # Market factory and management
+│   │   │   ├── MarketFactory.sol                 # Create new trading markets
+│   │   │   ├── MarketRegistry.sol                # Track all markets
+│   │   │   ├── PriceFeedAdapter.sol              # Connect price feeds
+│   │   │   ├── RiskParameterManager.sol          # Market risk settings
+│   │   │   └── TradingSchedule.sol               # Market hours/sessions
+│   │   ├── oracles/                              # Multi-oracle price feed system
+│   │   │   ├── adapters/
+│   │   │   │   ├── ChainlinkAdapter.sol          # Chainlink integration
+│   │   │   │   ├── ComputedOracle.sol            # Derived prices
+│   │   │   │   ├── PythAdapter.sol               # Pyth Network integration
+│   │   │   │   ├── TrustedOracle.sol             # Manual/trusted feeds
+│   │   │   │   └── TWAPAdapter.sol               # Time-weighted average
+│   │   │   ├── OracleRegistry.sol                # Oracle management
+│   │   │   └── OracleSecurity.sol                # Price validation
+│   │   └── data/                                 # Protocol data storage
+│   │       ├── DataStore.sol                     # Core data storage
+│   │       ├── DataStoreUtils.sol                # Storage helpers
+│   │       └── DataTypes.sol                     # Data type definitions
+│   ├── baskets/                                  # Tokenized basket engine
+│   │   ├── BasketEngine.sol                      # Core basket logic
+│   │   ├── BasketFactory.sol                     # Create basket products
+│   │   ├── BasketPricing.sol                     # Basket valuation
+│   │   ├── BasketTypes.sol                       # Basket type definitions
+│   │   └── RebalancingEngine.sol                 # Auto-rebalancing logic
+│   ├── vaults/                                   # Capital management
+│   │   ├── InsuranceVault.sol                    # Insurance fund
+│   │   ├── LiquidityVault.sol                    # LP vault
+│   │   ├── TreasuryVault.sol                     # Protocol treasury
+│   │   └── VaultManager.sol                      # Vault coordination
+│   ├── routers/                                  # User-facing interaction layer
+│   │   ├── BasketRouter.sol                      # Basket operations
+│   │   ├── CoreRouter.sol                        # Main entry point
+│   │   ├── EventRouter.sol                       # Event trading
+│   │   ├── TradingRouter.sol                     # Trading operations
+│   │   └── VaultRouter.sol                       # Vault interactions
+│   ├── readers/                                  # View functions and analytics
+│   │   ├── BasketReader.sol                      # Basket data queries
+│   │   ├── EventReader.sol                       # Event data queries
+│   │   ├── PortfolioReader.sol                   # User portfolio data
+│   │   ├── ProtocolReader.sol                    # Protocol stats
+│   │   ├── RiskReader.sol                        # Risk metrics
+│   │   └── TradingReader.sol                     # Trading data queries
+│   ├── fees/                                     # Fee calculation and distribution
+│   │   ├── FeeCalculator.sol                     # Calculate fees
+│   │   ├── FeeDistributor.sol                    # Distribute fees
+│   │   ├── IncentiveManager.sol                  # Manage incentives
+│   │   └── RevenueManager.sol                    # Revenue tracking
+│   ├── access/                                   # Role-based access control
+│   │   ├── AccessManager.sol                     # Central access control
+│   │   ├── ProtocolOwner.sol                     # Owner functions
+│   │   └── RoleRegistry.sol                      # Role definitions
+│   ├── security/                                 # Security systems
+│   │   ├── CircuitBreaker.sol                    # Auto-pause on anomalies
+│   │   ├── EmergencyPauser.sol                   # Emergency pause
+│   │   ├── RateLimiter.sol                       # Rate limiting
+│   │   └── ReentrancyGuard.sol                   # Reentrancy protection
+│   ├── tokens/                                   # Token implementations
+│   │   ├── erc20/
+│   │   │   ├── BasketShareToken.sol              # Basket share tokens
+│   │   │   └── VaultShareToken.sol               # Vault LP tokens
+│   │   └── erc721/
+│   │       ├── BasketNFT.sol                     # Basket NFTs
+│   │       └── OrderNFT.sol                      # Order NFTs (composability)
+│   └── libraries/                                # Reusable utility libraries
+│       ├── arrays/
+│       │   ├── ArrayUtils.sol                    # Array manipulation
+│       │   └── SortUtils.sol                     # Sorting algorithms
+│       ├── math/
+│       │   ├── FixedPointMath.sol                # Fixed-point arithmetic
+│       │   ├── PercentageMath.sol                # Percentage calculations
+│       │   └── Statistics.sol                    # Statistical functions
+│       ├── structs/
+│       │   ├── BasketStructs.sol                 # Basket data structures
+│       │   ├── CommonStructs.sol                 # Shared structures
+│       │   ├── EventStructs.sol                  # Event data structures
+│       │   └── TradingStructs.sol                # Trading data structures
+│       └── utils/
+│           ├── AddressUtils.sol                  # Address utilities
+│           ├── SafeTransfer.sol                  # Safe token transfers
+│           └── TimeUtils.sol                     # Time utilities
+├── test/                                         # Comprehensive test suite
+│   ├── unit/                                     # Unit tests
+│   │   ├── Access.t.sol
+│   │   ├── Baskets.t.sol
+│   │   ├── Events.t.sol
+│   │   ├── Markets.t.sol
+│   │   ├── Oracles.t.sol
+│   │   ├── Trading.t.sol
+│   │   └── Vaults.t.sol
+│   ├── integration/                              # Integration tests
+│   │   ├── BasketFlow.t.sol
+│   │   ├── CrossMarginFlow.t.sol
+│   │   ├── EventFlow.t.sol
+│   │   ├── LiquidationFlow.t.sol
+│   │   ├── TradingFlow.t.sol
+│   │   └── VaultFlow.t.sol
+│   ├── fuzz/                                     # Invariant/fuzz tests
+│   │   ├── BasketInvariants.t.sol
+│   │   ├── TradingInvariants.t.sol
+│   │   └── VaultInvariants.t.sol
+│   └── security/                                 # Security tests
+│       ├── EdgeCases.t.sol
+│       ├── LiquidationAttack.t.sol
+│       ├── OracleAttack.t.sol
+│       └── RateLimitTest.t.sol
+├── script/                                       # Deployment and operations
+│   ├── deploy/                                   # Deployment scripts
+│   │   ├── 01_Core.s.sol
+│   │   ├── 02_Trading.s.sol
+│   │   ├── 03_Markets.s.sol
+│   │   ├── 04_Events.s.sol
+│   │   ├── 05_Baskets.s.sol
+│   │   ├── 06_Vaults.s.sol
+│   │   ├── 07_Routers.s.sol
+│   │   └── 08_Initialize.s.sol
+│   └── operations/                               # Operational scripts
+│       ├── baskets/
+│       │   ├── CreateBasket.s.sol
+│       │   └── RebalanceBasket.s.sol
+│       ├── events/
+│       │   ├── CreateEvent.s.sol
+│       │   └── SettleEvent.s.sol
+│       ├── markets/
+│       │   ├── AddMarket.s.sol
+│       │   ├── UpdateRiskParams.s.sol
+│       │   └── WhitelistOracle.s.sol
+│       └── emergency/
+│           └── EmergencyPause.s.sol
+├── config/                                       # Configuration files
+├── docs/                                         # Technical documentation
+└── keeper-bots/                                  # Off-chain automation
 ```
 
 ### Key Components
