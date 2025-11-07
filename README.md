@@ -304,172 +304,12 @@ protocol-contracts/
 │   ├── tokens/                                   # Token implementations
 │   │   ├── erc20/
 │   │   │   ├── BasketShareToken.sol              # Basket share tokens
-│   │   │   └── VaultShareToken.sol               # Vault LP tokens
-│   │   └── erc721/
-│   │       ├── BasketNFT.sol                     # Basket NFTs
-│   │       └── OrderNFT.sol                      # Order NFTs (composability)
-│   └── libraries/                                # Reusable utility libraries
-│       ├── arrays/
-│       │   ├── ArrayUtils.sol                    # Array manipulation
-│       │   └── SortUtils.sol                     # Sorting algorithms
-│       ├── math/
-│       │   ├── FixedPointMath.sol                # Fixed-point arithmetic
-│       │   ├── PercentageMath.sol                # Percentage calculations
-│       │   └── Statistics.sol                    # Statistical functions
-│       ├── structs/
-│       │   ├── BasketStructs.sol                 # Basket data structures
-│       │   ├── CommonStructs.sol                 # Shared structures
-│       │   ├── EventStructs.sol                  # Event data structures
-│       │   └── TradingStructs.sol                # Trading data structures
-│       └── utils/
-│           ├── AddressUtils.sol                  # Address utilities
-│           ├── SafeTransfer.sol                  # Safe token transfers
-│           └── TimeUtils.sol                     # Time utilities
-├── test/                                         # Comprehensive test suite
-│   ├── unit/                                     # Unit tests
-│   │   ├── Access.t.sol
-│   │   ├── Baskets.t.sol
-│   │   ├── Events.t.sol
-│   │   ├── Markets.t.sol
-│   │   ├── OrderBook.t.sol
-│   │   ├── Oracles.t.sol
-│   │   ├── Trading.t.sol
-│   │   └── Vaults.t.sol
-│   ├── integration/                              # Integration tests
-│   │   ├── BasketFlow.t.sol
-│   │   ├── CrossMarginFlow.t.sol
-│   │   ├── EventFlow.t.sol
-│   │   ├── LiquidationFlow.t.sol
-│   │   ├── OrderBookFlow.t.sol
-│   │   ├── TradingFlow.t.sol
-│   │   └── VaultFlow.t.sol
-│   ├── fuzz/                                     # Invariant/fuzz tests
-│   │   ├── BasketInvariants.t.sol
-│   │   ├── OrderBookInvariants.t.sol
-│   │   ├── TradingInvariants.t.sol
-│   │   └── VaultInvariants.t.sol
-│   └── security/                                 # Security tests
-│       ├── EdgeCases.t.sol
-│       ├── LiquidationAttack.t.sol
-│       ├── OracleAttack.t.sol
-│       ├── OrderBookAttack.t.sol
-│       └── RateLimitTest.t.sol
-├── script/                                       # Deployment and operations
-│   ├── deploy/                                   # Deployment scripts
-│   │   ├── 01_Core.s.sol
-│   │   ├── 02_Trading.s.sol
-│   │   ├── 03_Markets.s.sol
-│   │   ├── 04_Events.s.sol
-│   │   ├── 05_Baskets.s.sol
-│   │   ├── 06_Vaults.s.sol
-│   │   ├── 07_Routers.s.sol
-│   │   └── 08_Initialize.s.sol
-│   └── operations/                               # Operational scripts
-│       ├── baskets/
-│       │   ├── CreateBasket.s.sol
-│       │   └── RebalanceBasket.s.sol
-│       ├── events/
-│       │   ├── CreateEvent.s.sol
-│       │   └── SettleEvent.s.sol
-│       ├── markets/
-│       │   ├── AddMarket.s.sol
-│       │   ├── UpdateRiskParams.s.sol
-│       │   └── WhitelistOracle.s.sol
-│       └── emergency/
-│           └── EmergencyPause.s.sol
-├── config/                                       # Configuration files
-├── docs/                                         # Technical documentation
-└── keeper-bots/                                  # Off-chain automation services
-```
-
-protocol-contracts/
-├── src/
-│   ├── core/                                      # Core protocol logic
-│   │   ├── trading/                               # Trading engines
-│   │   │   ├── engines/
-│   │   │   │   ├── CrossMarginEngine.sol         # Cross-margin perpetuals
-│   │   │   │   ├── PerpEngine.sol                # Perpetual futures engine
-│   │   │   │   ├── SpotEngine.sol                # Spot trading engine
-│   │   │   │   └── OrderBook.sol                 # CLOB limit order matching
-│   │   │   ├── FundingRateCalculator.sol         # Perp funding rate logic
-│   │   │   ├── LiquidationEngine.sol             # Position liquidation
-│   │   │   ├── OrderManager.sol                  # Order lifecycle management
-│   │   │   └── PositionManager.sol               # Position tracking
-│   │   ├── events/                               # Event derivatives system
-│   │   │   ├── EmergencyEvent.sol                # Unscheduled event markets
-│   │   │   ├── EventDerivative.sol               # Base event contract
-│   │   │   ├── EventFactory.sol                  # Create new event markets
-│   │   │   ├── EventSettlement.sol               # Settle event outcomes
-│   │   │   ├── OutcomeVerifier.sol               # Verify event results
-│   │   │   └── ScheduledEvent.sol                # Scheduled event markets
-│   │   ├── markets/                              # Market factory and management
-│   │   │   ├── MarketFactory.sol                 # Create new trading markets
-│   │   │   ├── MarketRegistry.sol                # Track all markets
-│   │   │   ├── PriceFeedAdapter.sol              # Connect price feeds
-│   │   │   ├── RiskParameterManager.sol          # Market risk settings
-│   │   │   └── TradingSchedule.sol               # Market hours/sessions
-│   │   ├── oracles/                              # Multi-oracle price feed system
-│   │   │   ├── adapters/
-│   │   │   │   ├── ChainlinkAdapter.sol          # Chainlink integration
-│   │   │   │   ├── ComputedOracle.sol            # Derived prices
-│   │   │   │   ├── PythAdapter.sol               # Pyth Network integration
-│   │   │   │   ├── TrustedOracle.sol             # Manual/trusted feeds
-│   │   │   │   └── TWAPAdapter.sol               # Time-weighted average
-│   │   │   ├── OracleRegistry.sol                # Oracle management
-│   │   │   └── OracleSecurity.sol                # Price validation
-│   │   └── data/                                 # Protocol data storage
-│   │       ├── DataStore.sol                     # Core data storage
-│   │       ├── DataStoreUtils.sol                # Storage helpers
-│   │       ├── DataTypes.sol                     # Data type definitions
-│   │       └── OrderStorage.sol                  # Order book data
-│   ├── baskets/                                  # Tokenized basket engine
-│   │   ├── BasketEngine.sol                      # Core basket logic
-│   │   ├── BasketFactory.sol                     # Create basket products
-│   │   ├── BasketPricing.sol                     # Basket valuation
-│   │   ├── BasketTypes.sol                       # Basket type definitions
-│   │   └── RebalancingEngine.sol                 # Auto-rebalancing logic
-│   ├── vaults/                                   # Capital management
-│   │   ├── InsuranceVault.sol                    # Insurance fund
-│   │   ├── LiquidityVault.sol                    # LP vault
-│   │   ├── TreasuryVault.sol                     # Protocol treasury
-│   │   └── VaultManager.sol                      # Vault coordination
-│   ├── routers/                                  # User-facing interaction layer
-│   │   ├── BasketRouter.sol                      # Basket operations
-│   │   ├── CoreRouter.sol                        # Main entry point
-│   │   ├── EventRouter.sol                       # Event trading
-│   │   ├── TradingRouter.sol                     # Trading operations
-│   │   └── VaultRouter.sol                       # Vault interactions
-│   ├── readers/                                  # View functions and analytics
-│   │   ├── BasketReader.sol                      # Basket data queries
-│   │   ├── EventReader.sol                       # Event data queries
-│   │   ├── OrderBookReader.sol                   # Order book queries
-│   │   ├── PortfolioReader.sol                   # User portfolio data
-│   │   ├── ProtocolReader.sol                    # Protocol stats
-│   │   ├── RiskReader.sol                        # Risk metrics
-│   │   └── TradingReader.sol                     # Trading data queries
-│   ├── fees/                                     # Fee calculation and distribution
-│   │   ├── FeeCalculator.sol                     # Calculate fees
-│   │   ├── FeeDistributor.sol                    # Distribute fees
-│   │   ├── IncentiveManager.sol                  # Manage incentives
-│   │   └── RevenueManager.sol                    # Revenue tracking
-│   ├── access/                                   # Role-based access control
-│   │   ├── AccessManager.sol                     # Central access control
-│   │   ├── ProtocolOwner.sol                     # Owner functions
-│   │   └── RoleRegistry.sol                      # Role definitions
-│   ├── security/                                 # Security systems
-│   │   ├── CircuitBreaker.sol                    # Auto-pause on anomalies
-│   │   ├── EmergencyPauser.sol                   # Emergency pause
-│   │   ├── RateLimiter.sol                       # Rate limiting
-│   │   └── ReentrancyGuard.sol                   # Reentrancy protection
-│   ├── tokens/                                   # Token implementations
-│   │   ├── erc20/
-│   │   │   ├── BasketShareToken.sol              # Basket share tokens
 │   │   │   ├── VaultShareToken.sol               # Vault LP tokens (BLP)
-│   │   │   └── BAOBABToken.sol                   # ← Governance + reward token
+│   │   │   └── BAOBABToken.sol                   # Governance + reward token
 │   │   └── erc721/
 │   │       ├── BasketNFT.sol                     # Basket NFTs
 │   │       └── OrderNFT.sol                      # Order NFTs (composability)
-│   ├── governance/                               # ← Full governance module
+│   ├── governance/                               # Governance module
 │   │   ├── BAOBABGovernor.sol                    # Main voting contract
 │   │   ├── TimelockController.sol                # 72h delay executor
 │   │   ├── ProposalFactory.sol                   # Helper to create proposals
@@ -498,21 +338,21 @@ protocol-contracts/
 │   │   ├── Access.t.sol
 │   │   ├── Baskets.t.sol
 │   │   ├── Events.t.sol
+│   │   ├── Governance.t.sol
 │   │   ├── Markets.t.sol
 │   │   ├── OrderBook.t.sol
 │   │   ├── Oracles.t.sol
 │   │   ├── Trading.t.sol
-│   │   ├── Vaults.t.sol
-│   │   └── Governance.t.sol                      # ← Test voting, timelock, minting
+│   │   └── Vaults.t.sol
 │   ├── integration/                              # Integration tests
 │   │   ├── BasketFlow.t.sol
 │   │   ├── CrossMarginFlow.t.sol
 │   │   ├── EventFlow.t.sol
+│   │   ├── GovernanceFlow.t.sol
 │   │   ├── LiquidationFlow.t.sol
 │   │   ├── OrderBookFlow.t.sol
 │   │   ├── TradingFlow.t.sol
-│   │   ├── VaultFlow.t.sol
-│   │   └── GovernanceFlow.t.sol                  # ← End-to-end proposal execution
+│   │   └── VaultFlow.t.sol
 │   ├── fuzz/                                     # Invariant/fuzz tests
 │   │   ├── BasketInvariants.t.sol
 │   │   ├── OrderBookInvariants.t.sol
@@ -533,7 +373,7 @@ protocol-contracts/
 │   │   ├── 05_Baskets.s.sol
 │   │   ├── 06_Vaults.s.sol
 │   │   ├── 07_Routers.s.sol
-│   │   ├── 08_Governance.s.sol                   # ← Deploy BAOBAB + Governor + Timelock
+│   │   ├── 08_Governance.s.sol
 │   │   └── 09_Initialize.s.sol
 │   └── operations/                               # Operational scripts
 │       ├── baskets/
@@ -546,10 +386,10 @@ protocol-contracts/
 │       │   ├── AddMarket.s.sol
 │       │   ├── UpdateRiskParams.s.sol
 │       │   └── WhitelistOracle.s.sol
-│       ├── governance/                           # ← NEW: Proposal scripts
-│       │   ├── ProposeRewardMint.s.sol           # Mint BAOBAB to LiquidityVault
-│       │   ├── ProposeMarketMaking.s.sol         # Set MM spread, capital
-│       │   └── ExecuteProposal.s.sol             # Execute after timelock
+│       ├── governance/
+│       │   ├── ProposeRewardMint.s.sol
+│       │   ├── ProposeMarketMaking.s.sol
+│       │   └── ExecuteProposal.s.sol
 │       └── emergency/
 │           └── EmergencyPause.s.sol
 ├── config/                                       # Configuration files
@@ -557,15 +397,6 @@ protocol-contracts/
 └── keeper-bots/                                  # Off-chain automation services
 ```
 
-## graph TD
-    A[BAOBAB Holders] --> B[Vote: Set spread 0.3% on MTNN]
-    B --> C[Timelock 72h]
-    C --> D[DAO MM Bot updates config]
-    D --> E[Bot places buy/sell orders]
-    E --> F[Trade fills → profit]
-    F --> G[TreasuryVault mints BAOBAB]
-    G --> H[LiquidityVault → LPs + NFT stakers claim]
-```
 ### Key Components
 
 | Component | Purpose |
