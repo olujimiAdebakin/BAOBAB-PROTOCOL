@@ -26,6 +26,22 @@ Built on a unified order book with specialized support for African and emerging 
 
 ## 🎯 Key Features
 
+### ⚡ Hybrid Execution Engine
+
+**CLOB + AMM Model**: Best of both worlds with intelligent routing.
+
+- **CLOB (Central Limit Order Book)**: Limit orders match peer-to-peer for best prices
+- **AMM Vault**: Market orders execute instantly against protocol liquidity
+- **Advanced Order Types**: 
+  - **Market**: Instant execution at current price
+  - **Limit**: Execute at specified price or better
+  - **Scale**: Split large orders across multiple price levels (reduces slippage)
+  - **TWAP**: Time-weighted execution over specified duration (minimizes market impact)
+- **Smart Routing**: Protocol automatically routes to best execution venue
+- **Unified Liquidity**: Single pool serves both CLOB and AMM trading
+
+---
+
 ### 🎨 Orders as Composable NFTs ⭐ (Industry First)
 
 Every limit order mints as an ERC-721 NFT, transforming dead capital into productive DeFi assets.
@@ -143,7 +159,8 @@ Multi-layered protection for protocol and users.
 | **Order Collateralization** | ❌ | ❌ | ❌ | ❌ | ✅ **UNIQUE** |
 | **Strategy Tokenization** | ❌ | ❌ | ❌ | ❌ | ✅ **UNIQUE** |
 | **DAO Market Making** | ❌ | ❌ | ❌ | ❌ | ✅ **UNIQUE** |
-| **Unified Order Book** | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **CLOB + AMM Hybrid** | AMM | AMM | CLOB | CLOB | ✅ **Both** |
+| **Scale/TWAP Orders** | ❌ | ❌ | ❌ | ✅ | ✅ |
 | **Gasless Execution** | ❌ | ✅ | ✅ | ✅ | ✅ |
 | **Spot + Perps** | Spot | Perps | Perps | Perps | Both |
 | **African Assets** | ❌ | ❌ | ❌ | ❌ | ✅ **UNIQUE** |
@@ -212,7 +229,8 @@ protocol-contracts/
 │   │   │   ├── engines/
 │   │   │   │   ├── CrossMarginEngine.sol         # Cross-margin perpetuals
 │   │   │   │   ├── PerpEngine.sol                # Perpetual futures engine
-│   │   │   │   └── SpotEngine.sol                # Spot trading engine
+│   │   │   │   ├── SpotEngine.sol                # Spot trading engine
+│   │   │   │   └── OrderBook.sol                 # CLOB limit order matching
 │   │   │   ├── FundingRateCalculator.sol         # Perp funding rate logic
 │   │   │   ├── LiquidationEngine.sol             # Position liquidation
 │   │   │   ├── OrderManager.sol                  # Order lifecycle management
@@ -242,7 +260,8 @@ protocol-contracts/
 │   │   └── data/                                 # Protocol data storage
 │   │       ├── DataStore.sol                     # Core data storage
 │   │       ├── DataStoreUtils.sol                # Storage helpers
-│   │       └── DataTypes.sol                     # Data type definitions
+│   │       ├── DataTypes.sol                     # Data type definitions
+│   │       └── OrderStorage.sol                  # Order book data
 │   ├── baskets/                                  # Tokenized basket engine
 │   │   ├── BasketEngine.sol                      # Core basket logic
 │   │   ├── BasketFactory.sol                     # Create basket products
@@ -263,6 +282,7 @@ protocol-contracts/
 │   ├── readers/                                  # View functions and analytics
 │   │   ├── BasketReader.sol                      # Basket data queries
 │   │   ├── EventReader.sol                       # Event data queries
+│   │   ├── OrderBookReader.sol                   # Order book queries
 │   │   ├── PortfolioReader.sol                   # User portfolio data
 │   │   ├── ProtocolReader.sol                    # Protocol stats
 │   │   ├── RiskReader.sol                        # Risk metrics
@@ -284,10 +304,18 @@ protocol-contracts/
 │   ├── tokens/                                   # Token implementations
 │   │   ├── erc20/
 │   │   │   ├── BasketShareToken.sol              # Basket share tokens
-│   │   │   └── VaultShareToken.sol               # Vault LP tokens
+│   │   │   ├── VaultShareToken.sol               # Vault LP tokens (BLP)
+│   │   │   └── BAOBABToken.sol                   # Governance + reward token
 │   │   └── erc721/
 │   │       ├── BasketNFT.sol                     # Basket NFTs
 │   │       └── OrderNFT.sol                      # Order NFTs (composability)
+│   ├── governance/                               # Governance module
+│   │   ├── BAOBABGovernor.sol                    # Main voting contract
+│   │   ├── TimelockController.sol                # 72h delay executor
+│   │   ├── ProposalFactory.sol                   # Helper to create proposals
+│   │   └── interfaces/
+│   │       ├── IBAOBABGovernor.sol               # Governor interface
+│   │       └── ITimelock.sol                     # Timelock interface
 │   └── libraries/                                # Reusable utility libraries
 │       ├── arrays/
 │       │   ├── ArrayUtils.sol                    # Array manipulation
@@ -310,7 +338,9 @@ protocol-contracts/
 │   │   ├── Access.t.sol
 │   │   ├── Baskets.t.sol
 │   │   ├── Events.t.sol
+│   │   ├── Governance.t.sol
 │   │   ├── Markets.t.sol
+│   │   ├── OrderBook.t.sol
 │   │   ├── Oracles.t.sol
 │   │   ├── Trading.t.sol
 │   │   └── Vaults.t.sol
@@ -318,17 +348,21 @@ protocol-contracts/
 │   │   ├── BasketFlow.t.sol
 │   │   ├── CrossMarginFlow.t.sol
 │   │   ├── EventFlow.t.sol
+│   │   ├── GovernanceFlow.t.sol
 │   │   ├── LiquidationFlow.t.sol
+│   │   ├── OrderBookFlow.t.sol
 │   │   ├── TradingFlow.t.sol
 │   │   └── VaultFlow.t.sol
 │   ├── fuzz/                                     # Invariant/fuzz tests
 │   │   ├── BasketInvariants.t.sol
+│   │   ├── OrderBookInvariants.t.sol
 │   │   ├── TradingInvariants.t.sol
 │   │   └── VaultInvariants.t.sol
 │   └── security/                                 # Security tests
 │       ├── EdgeCases.t.sol
 │       ├── LiquidationAttack.t.sol
 │       ├── OracleAttack.t.sol
+│       ├── OrderBookAttack.t.sol
 │       └── RateLimitTest.t.sol
 ├── script/                                       # Deployment and operations
 │   ├── deploy/                                   # Deployment scripts
@@ -339,7 +373,8 @@ protocol-contracts/
 │   │   ├── 05_Baskets.s.sol
 │   │   ├── 06_Vaults.s.sol
 │   │   ├── 07_Routers.s.sol
-│   │   └── 08_Initialize.s.sol
+│   │   ├── 08_Governance.s.sol
+│   │   └── 09_Initialize.s.sol
 │   └── operations/                               # Operational scripts
 │       ├── baskets/
 │       │   ├── CreateBasket.s.sol
@@ -351,18 +386,23 @@ protocol-contracts/
 │       │   ├── AddMarket.s.sol
 │       │   ├── UpdateRiskParams.s.sol
 │       │   └── WhitelistOracle.s.sol
+│       ├── governance/
+│       │   ├── ProposeRewardMint.s.sol
+│       │   ├── ProposeMarketMaking.s.sol
+│       │   └── ExecuteProposal.s.sol
 │       └── emergency/
 │           └── EmergencyPause.s.sol
 ├── config/                                       # Configuration files
 ├── docs/                                         # Technical documentation
-└── keeper-bots/                                  # Off-chain automation
+└── keeper-bots/                                  # Off-chain automation services
 ```
 
 ### Key Components
 
 | Component | Purpose |
 |-----------|---------|
-| **Trading Engines** | Perpetual futures, spot trading, cross-margin calculations |
+| **OrderBook.sol** | CLOB matching engine for limit orders |
+| **SpotEngine.sol** | AMM vault for instant market execution |
 | **Order NFTs** | ERC-721 composable order representation |
 | **Execution Fee Manager** | Gasless execution economics and keeper compensation |
 | **Order Baskets** | Bundle orders into tokenized strategy funds |
@@ -482,6 +522,9 @@ A: Yes! Launching Q2 2025. Stake BAOBAB tokens, run our bot, earn ~$500-1000/day
 
 **Q: Why focus on Africa?**  
 A: 1.4B people, $3T GDP, massively underserved by DeFi. We're building infrastructure Africa needs.
+
+**Q: What's the difference between CLOB and AMM?**  
+A: CLOB matches limit orders peer-to-peer. AMM executes market orders instantly against protocol liquidity. BAOBAB uses both for optimal execution.
 
 ---
 
