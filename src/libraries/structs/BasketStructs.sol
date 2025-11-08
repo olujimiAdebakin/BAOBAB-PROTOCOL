@@ -13,8 +13,7 @@ import {CommonStructs} from "./CommonStructs.sol";
  *                                       BASKET STRUCTS
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
  */
-library BasketStructs{
-
+library BasketStructs {
     using CommonStructs for *;
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                       ENUMERATIONS
@@ -519,10 +518,7 @@ library BasketStructs{
      * @param maxDeviationBps Maximum allowed drift
      * @return bool True if rebalance needed
      */
-    function needsRebalance(
-        BasketComponent[] memory components,
-        uint16 maxDeviationBps
-    ) internal pure returns (bool) {
+    function needsRebalance(BasketComponent[] memory components, uint16 maxDeviationBps) internal pure returns (bool) {
         for (uint256 i = 0; i < components.length; i++) {
             if (calculateDrift(components[i]) > maxDeviationBps) {
                 return true;

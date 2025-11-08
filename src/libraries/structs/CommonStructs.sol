@@ -350,10 +350,8 @@ library CommonStructs {
      * @return bool True if valid order type
      */
     function isValidOrderType(OrderType orderType) internal pure returns (bool) {
-        return orderType == OrderType.MARKET || 
-               orderType == OrderType.LIMIT || 
-               orderType == OrderType.SCALE || 
-               orderType == OrderType.TWAP;
+        return orderType == OrderType.MARKET || orderType == OrderType.LIMIT || orderType == OrderType.SCALE
+            || orderType == OrderType.TWAP;
     }
 
     /**
@@ -390,10 +388,10 @@ library CommonStructs {
      */
     function calculateInterestOwed(CollateralizedOrder memory collateralizedOrder) internal view returns (uint256) {
         if (!collateralizedOrder.isActive) return 0;
-        
+
         uint256 timeElapsed = block.timestamp - collateralizedOrder.borrowedAt;
         uint256 annualInterest = (collateralizedOrder.loanAmount * collateralizedOrder.interestRate) / 10000;
-        
+
         // Calculate pro-rated interest (365 days = 31536000 seconds)
         return (annualInterest * timeElapsed) / 365 days;
     }
@@ -404,11 +402,8 @@ library CommonStructs {
      * @return bool True if distribution is valid
      */
     function isValidFeeDistribution(FeeDistribution memory feeDistribution) internal pure returns (bool) {
-        uint256 total = uint256(feeDistribution.treasuryBps) + 
-                       uint256(feeDistribution.lpBps) + 
-                       uint256(feeDistribution.insuranceBps) + 
-                       uint256(feeDistribution.stakersBps) + 
-                       uint256(feeDistribution.burnBps);
+        uint256 total = uint256(feeDistribution.treasuryBps) + uint256(feeDistribution.lpBps)
+            + uint256(feeDistribution.insuranceBps) + uint256(feeDistribution.stakersBps) + uint256(feeDistribution.burnBps);
         return total == 10000; // 100%
     }
 
@@ -418,14 +413,15 @@ library CommonStructs {
      * @param maintenanceMarginBps Maintenance margin requirement
      * @return uint256 Price at which position gets liquidated
      */
-    function calculateLiquidationPrice(
-        Position memory position,
-        uint16 maintenanceMarginBps
-    ) internal pure returns (uint256) {
+    function calculateLiquidationPrice(Position memory position, uint16 maintenanceMarginBps)
+        internal
+        pure
+        returns (uint256)
+    {
         if (position.size == 0) return 0;
-        
+
         uint256 maintenanceMargin = (position.size * position.entryPrice * maintenanceMarginBps) / 10000;
-        
+
         if (position.side == Side.LONG) {
             // Long liquidation: entryPrice - (collateral - maintenanceMargin) / size
             if (position.collateral <= maintenanceMargin) return 0;
@@ -445,19 +441,16 @@ library CommonStructs {
      * @param currentPrice Current market price
      * @return int256 Unrealized profit/loss (can be negative)
      */
-    function calculateUnrealizedPnL(
-        Position memory position,
-        uint256 currentPrice
-    ) internal pure returns (int256) {
+    function calculateUnrealizedPnL(Position memory position, uint256 currentPrice) internal pure returns (int256) {
         if (position.size == 0) return 0;
-        
+
         int256 priceDiff;
         if (position.side == Side.LONG) {
             priceDiff = int256(currentPrice) - int256(position.entryPrice);
         } else {
             priceDiff = int256(position.entryPrice) - int256(currentPrice);
         }
-        
+
         return (priceDiff * int256(position.size)) / 1e18;
     }
 }

@@ -14,16 +14,16 @@ library AddressUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // ERRORS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Reverts when address is zero
     error ZeroAddress();
-    
+
     /// @dev Reverts when address is not a contract
     error NotAContract();
-    
+
     /// @dev Reverts when contract call fails
     error CallFailed();
-    
+
     /// @dev Reverts when delegate call is not allowed to target
     error DelegateCallNotAllowed();
 
@@ -82,13 +82,12 @@ library AddressUtils {
      * @return success Whether the call succeeded
      * @return returnData Return data from the call
      */
-    function functionCallWithValue(
-        address target,
-        uint256 value,
-        bytes memory data
-    ) internal returns (bool success, bytes memory returnData) {
+    function functionCallWithValue(address target, uint256 value, bytes memory data)
+        internal
+        returns (bool success, bytes memory returnData)
+    {
         validateContract(target);
-        
+
         (success, returnData) = target.call{value: value}(data);
         if (!success) revert CallFailed();
     }
@@ -100,12 +99,13 @@ library AddressUtils {
      * @return success Whether the call succeeded
      * @return returnData Return data from the call
      */
-    function functionStaticCall(
-        address target,
-        bytes memory data
-    ) internal view returns (bool success, bytes memory returnData) {
+    function functionStaticCall(address target, bytes memory data)
+        internal
+        view
+        returns (bool success, bytes memory returnData)
+    {
         validateContract(target);
-        
+
         (success, returnData) = target.staticcall(data);
         if (!success) revert CallFailed();
     }
@@ -118,15 +118,14 @@ library AddressUtils {
      * @return success Whether the call succeeded
      * @return returnData Return data from the call
      */
-    function functionDelegateCall(
-        address target,
-        bytes memory data,
-        mapping(address => bool) storage allowedTargets
-    ) internal returns (bool success, bytes memory returnData) {
+    function functionDelegateCall(address target, bytes memory data, mapping(address => bool) storage allowedTargets)
+        internal
+        returns (bool success, bytes memory returnData)
+    {
         validateContract(target);
-        
+
         if (!allowedTargets[target]) revert DelegateCallNotAllowed();
-        
+
         (success, returnData) = target.delegatecall(data);
         if (!success) revert CallFailed();
     }
@@ -215,17 +214,17 @@ library AddressUtils {
     function remove(address[] memory arr, address target) internal pure returns (address[] memory) {
         int256 index = indexOf(arr, target);
         if (index == -1) revert("Address not found in array");
-        
+
         address[] memory newArray = new address[](arr.length - 1);
         uint256 newIndex = 0;
-        
+
         for (uint256 i = 0; i < arr.length; i++) {
             if (i != uint256(index)) {
                 newArray[newIndex] = arr[i];
                 newIndex++;
             }
         }
-        
+
         return newArray;
     }
 
@@ -241,7 +240,7 @@ library AddressUtils {
      */
     function supportsInterface(address addr, bytes4 interfaceId) internal view returns (bool) {
         if (!isContract(addr)) return false;
-        
+
         try IERC165(addr).supportsInterface(interfaceId) returns (bool result) {
             return result;
         } catch {
@@ -305,8 +304,6 @@ library AddressUtils {
             codeSize := extcodesize(addr)
         }
     }
-    
-
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // EIP-165 INTERFACE FOR ERC165 SUPPORT
@@ -316,5 +313,4 @@ library AddressUtils {
     // interface IERC165 {
     //     function supportsInterface(bytes4 interfaceId) external view returns (bool);
     // }
-
 }

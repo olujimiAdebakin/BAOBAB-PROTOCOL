@@ -14,9 +14,8 @@ import {CommonStructs} from "./CommonStructs.sol";
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
  */
 library TradingStructs {
-
     using CommonStructs for *;
-    
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                       ENUMERATIONS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -549,7 +548,7 @@ library TradingStructs {
      */
     function getNextScalePrice(ScaleConfig memory config) internal pure returns (uint256) {
         if (!hasRemainingScaleLevels(config)) return 0;
-        
+
         if (config.ascending) {
             return config.startPrice + (config.priceStep * config.currentLevel);
         } else {

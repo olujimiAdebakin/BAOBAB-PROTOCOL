@@ -16,32 +16,32 @@ library PercentageMath {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // CONSTANTS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Scaling factor for percentages (100.00% = 10,000 basis points)
     uint256 internal constant PERCENTAGE_FACTOR = 1e4;
-    
+
     /// @dev Half percentage factor for rounding operations
     uint256 internal constant HALF_PERCENTAGE = PERCENTAGE_FACTOR / 2;
-    
+
     /// @dev One basis point (0.01%)
     uint256 internal constant BP = 1;
-    
+
     /// @dev Maximum possible percentage (100%)
     uint256 internal constant MAX_PERCENTAGE = PERCENTAGE_FACTOR;
-    
+
     /// @dev One hundred percent in basis points
     uint256 internal constant ONE_HUNDRED_PERCENT = 100 * BP;
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // ERRORS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Reverts when percentage exceeds 100%
     error PercentageExceedsMax();
-    
+
     /// @dev Reverts when division by zero attempted
     error DivisionByZero();
-    
+
     /// @dev Reverts when input parameters are invalid
     error InvalidInput();
 
@@ -58,10 +58,10 @@ library PercentageMath {
      */
     function addPercent(uint256 x, uint256 percentage) internal pure returns (uint256 result) {
         if (percentage > MAX_PERCENTAGE) revert PercentageExceedsMax();
-        
+
         if (percentage == 0) return x;
         if (x == 0) return 0;
-        
+
         uint256 increment = (x * percentage) / PERCENTAGE_FACTOR;
         result = x + increment;
     }
@@ -75,10 +75,10 @@ library PercentageMath {
      */
     function subPercent(uint256 x, uint256 percentage) internal pure returns (uint256 result) {
         if (percentage > MAX_PERCENTAGE) revert PercentageExceedsMax();
-        
+
         if (percentage == 0) return x;
         if (x == 0) return 0;
-        
+
         uint256 decrement = (x * percentage) / PERCENTAGE_FACTOR;
         result = x - decrement;
     }
@@ -92,9 +92,9 @@ library PercentageMath {
      */
     function percent(uint256 x, uint256 percentage) internal pure returns (uint256 result) {
         if (percentage > MAX_PERCENTAGE) revert PercentageExceedsMax();
-        
+
         if (x == 0 || percentage == 0) return 0;
-        
+
         result = (x * percentage) / PERCENTAGE_FACTOR;
     }
 
@@ -107,9 +107,9 @@ library PercentageMath {
      */
     function percentUp(uint256 x, uint256 percentage) internal pure returns (uint256 result) {
         if (percentage > MAX_PERCENTAGE) revert PercentageExceedsMax();
-        
+
         if (x == 0 || percentage == 0) return 0;
-        
+
         result = (x * percentage + HALF_PERCENTAGE) / PERCENTAGE_FACTOR;
     }
 
@@ -127,7 +127,7 @@ library PercentageMath {
     function ratioAsPercent(uint256 part, uint256 total) internal pure returns (uint256 percentage) {
         if (total == 0) return 0;
         if (part == 0) return 0;
-        
+
         percentage = (part * PERCENTAGE_FACTOR) / total;
     }
 
@@ -139,7 +139,7 @@ library PercentageMath {
      */
     function calculatePercentChange(uint256 oldValue, uint256 newValue) internal pure returns (int256 change) {
         if (oldValue == 0) revert DivisionByZero();
-        
+
         if (newValue > oldValue) {
             uint256 increase = newValue - oldValue;
             change = int256((increase * PERCENTAGE_FACTOR) / oldValue);
@@ -157,7 +157,7 @@ library PercentageMath {
      */
     function calculateBpChange(uint256 oldValue, uint256 newValue) internal pure returns (int256 bpChange) {
         if (oldValue == 0) revert DivisionByZero();
-        
+
         if (newValue > oldValue) {
             uint256 increase = newValue - oldValue;
             bpChange = int256((increase * PERCENTAGE_FACTOR) / oldValue);
@@ -179,14 +179,18 @@ library PercentageMath {
      * @return compoundedAmount Principal compounded with interest
      * @dev Uses iterative compounding for precision
      */
-    function compound(uint256 principal, uint256 ratePerPeriod, uint256 periods) internal pure returns (uint256 compoundedAmount) {
+    function compound(uint256 principal, uint256 ratePerPeriod, uint256 periods)
+        internal
+        pure
+        returns (uint256 compoundedAmount)
+    {
         if (ratePerPeriod == 0) return principal;
         if (periods == 0) return principal;
         if (principal == 0) return 0;
-        
+
         compoundedAmount = principal;
         uint256 factor = PERCENTAGE_FACTOR + ratePerPeriod;
-        
+
         for (uint256 i = 0; i < periods; i++) {
             uint256 temp = compoundedAmount * factor;
             if (temp / factor != compoundedAmount) revert InvalidInput(); // Overflow check
@@ -202,7 +206,7 @@ library PercentageMath {
      */
     function aprToDaily(uint256 apr) internal pure returns (uint256 dailyRate) {
         if (apr == 0) return 0;
-        
+
         dailyRate = apr / 365;
     }
 
@@ -214,7 +218,7 @@ library PercentageMath {
      */
     function aprToPeriodic(uint256 apr, uint256 periodsPerYear) internal pure returns (uint256 periodicRate) {
         if (apr == 0 || periodsPerYear == 0) return 0;
-        
+
         periodicRate = apr / periodsPerYear;
     }
 
@@ -226,7 +230,7 @@ library PercentageMath {
      */
     function utilizationRate(uint256 borrowed, uint256 available) internal pure returns (uint256 utilization) {
         if (available == 0) return borrowed > 0 ? MAX_PERCENTAGE : 0;
-        
+
         uint256 total = borrowed + available;
         utilization = (borrowed * PERCENTAGE_FACTOR) / total;
     }
@@ -250,13 +254,13 @@ library PercentageMath {
         uint256 maintenanceMargin
     ) internal pure returns (uint256 liquidationPrice) {
         if (positionSize == 0 || maintenanceMargin == 0) revert InvalidInput();
-        
+
         uint256 marginValue = (collateral * PERCENTAGE_FACTOR) / (positionSize * maintenanceMargin / PERCENTAGE_FACTOR);
-        
+
         if (marginValue >= PERCENTAGE_FACTOR) {
             return 0; // Position never liquidates
         }
-        
+
         liquidationPrice = entryPrice * (PERCENTAGE_FACTOR - marginValue) / PERCENTAGE_FACTOR;
     }
 
@@ -275,7 +279,7 @@ library PercentageMath {
         uint256 maintenanceMargin
     ) internal pure returns (uint256 liquidationPrice) {
         if (positionSize == 0 || maintenanceMargin == 0) revert InvalidInput();
-        
+
         uint256 marginValue = (collateral * PERCENTAGE_FACTOR) / (positionSize * maintenanceMargin / PERCENTAGE_FACTOR);
         liquidationPrice = entryPrice * (PERCENTAGE_FACTOR + marginValue) / PERCENTAGE_FACTOR;
     }
@@ -283,17 +287,17 @@ library PercentageMath {
     /**
      * @notice Calculate profit/loss percentage for a position
      * @param entryPrice Entry price
-     * @param exitPrice Exit price  
+     * @param exitPrice Exit price
      * @param isLong Whether position is long
      * @return pnlPercent Profit/loss as percentage in basis points
      */
-    function calculatePnlPercent(
-        uint256 entryPrice,
-        uint256 exitPrice,
-        bool isLong
-    ) internal pure returns (int256 pnlPercent) {
+    function calculatePnlPercent(uint256 entryPrice, uint256 exitPrice, bool isLong)
+        internal
+        pure
+        returns (int256 pnlPercent)
+    {
         if (entryPrice == 0) revert DivisionByZero();
-        
+
         if (isLong) {
             if (exitPrice > entryPrice) {
                 uint256 profit = exitPrice - entryPrice;
@@ -321,15 +325,15 @@ library PercentageMath {
      * @return minPrice Minimum acceptable price
      * @return maxPrice Maximum acceptable price
      */
-    function slippageBounds(
-        uint256 price,
-        uint256 slippageBps,
-        bool isBuy
-    ) internal pure returns (uint256 minPrice, uint256 maxPrice) {
+    function slippageBounds(uint256 price, uint256 slippageBps, bool isBuy)
+        internal
+        pure
+        returns (uint256 minPrice, uint256 maxPrice)
+    {
         if (slippageBps > MAX_PERCENTAGE) revert PercentageExceedsMax();
-        
+
         uint256 slippageAmount = (price * slippageBps) / PERCENTAGE_FACTOR;
-        
+
         if (isBuy) {
             minPrice = price - slippageAmount;
             maxPrice = price + slippageAmount;
@@ -352,7 +356,7 @@ library PercentageMath {
     function calculateFee(uint256 amount, uint256 feeBps) internal pure returns (uint256 feeAmount) {
         if (feeBps > MAX_PERCENTAGE) revert PercentageExceedsMax();
         if (amount == 0 || feeBps == 0) return 0;
-        
+
         feeAmount = (amount * feeBps) / PERCENTAGE_FACTOR;
     }
 
@@ -366,7 +370,7 @@ library PercentageMath {
         if (feeBps > MAX_PERCENTAGE) revert PercentageExceedsMax();
         if (amount == 0) return 0;
         if (feeBps == 0) return amount;
-        
+
         uint256 feeAmount = (amount * feeBps) / PERCENTAGE_FACTOR;
         netAmount = amount - feeAmount;
     }
@@ -381,7 +385,7 @@ library PercentageMath {
         if (feeBps >= MAX_PERCENTAGE) revert PercentageExceedsMax();
         if (netAmount == 0) return 0;
         if (feeBps == 0) return netAmount;
-        
+
         grossAmount = (netAmount * PERCENTAGE_FACTOR) / (PERCENTAGE_FACTOR - feeBps);
     }
 
@@ -407,21 +411,21 @@ library PercentageMath {
         clampedPercentage = percentage > MAX_PERCENTAGE ? MAX_PERCENTAGE : percentage;
     }
 
- /**
- * @notice Convert basis points to decimal representation
- * @param bps Value in basis points
- * @return decimalValue Decimal representation (e.g., 100 bps = 0.01)
- */
-function bpsToDecimal(uint256 bps) internal pure returns (uint256 decimalValue) {
-    decimalValue = (bps * FixedPointMath.Q96) / PERCENTAGE_FACTOR;
-}
+    /**
+     * @notice Convert basis points to decimal representation
+     * @param bps Value in basis points
+     * @return decimalValue Decimal representation (e.g., 100 bps = 0.01)
+     */
+    function bpsToDecimal(uint256 bps) internal pure returns (uint256 decimalValue) {
+        decimalValue = (bps * FixedPointMath.Q96) / PERCENTAGE_FACTOR;
+    }
 
-/**
- * @notice Convert decimal to basis points
- * @param decimalValue Decimal value (e.g., 0.01 = 1%)
- * @return bps Value in basis points
- */
-function decimalToBps(uint256 decimalValue) internal pure returns (uint256 bps) {
-    bps = (decimalValue * PERCENTAGE_FACTOR) / FixedPointMath.Q96;
-}
+    /**
+     * @notice Convert decimal to basis points
+     * @param decimalValue Decimal value (e.g., 0.01 = 1%)
+     * @return bps Value in basis points
+     */
+    function decimalToBps(uint256 decimalValue) internal pure returns (uint256 bps) {
+        bps = (decimalValue * PERCENTAGE_FACTOR) / FixedPointMath.Q96;
+    }
 }

@@ -6,5 +6,5 @@ pragma solidity ^0.8.24;
  * @notice TODO: Add contract description
  */
 contract MarketFactory {
-    // TODO: Implement contract
+// TODO: Implement contract
 }

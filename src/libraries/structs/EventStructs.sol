@@ -9,7 +9,6 @@ pragma solidity ^0.8.24;
  *      Designed for scalability across African event markets (AFCON, elections, commodities)
  */
 library EventStructs {
-
     // ──────────────────────────────────────────────────────────────────────
     // Event Market Core
     // ──────────────────────────────────────────────────────────────────────
@@ -137,7 +136,7 @@ library EventStructs {
      * @param disputeBond % of pool required to challenge
      */
     struct EventFeeConfig {
-        uint16 entryFee;     // e.g. 50 = 0.50%
+        uint16 entryFee; // e.g. 50 = 0.50%
         uint16 creatorFee;
         uint16 protocolFee;
         uint16 lpFee;

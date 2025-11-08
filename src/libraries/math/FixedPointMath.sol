@@ -12,26 +12,26 @@ library FixedPointMath {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // CONSTANTS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Scaling factor for Q64.96 fixed-point numbers
     uint256 internal constant Q64 = 2 ** 64;
-    
+
     /// @dev Primary scaling factor (64 + 96 = 160 bits total precision)
     uint256 internal constant Q96 = 2 ** 96;
-    
+
     /// @dev Extended precision for intermediate calculations
     uint256 internal constant Q192 = 2 ** 192;
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // ERRORS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Reverts when arithmetic operation overflows
     error Overflow();
-    
+
     /// @dev Reverts when division by zero attempted
     error DivByZero();
-    
+
     /// @dev Reverts when input parameters are invalid
     error InvalidInput();
 
@@ -42,7 +42,7 @@ library FixedPointMath {
     /**
      * @notice Multiply two Q64.96 numbers, rounding down
      * @param x First Q64.96 number
-     * @param y Second Q64.96 number  
+     * @param y Second Q64.96 number
      * @return result x * y as Q64.96 (rounded down)
      * @dev Uses assembly for gas-efficient overflow protection
      */
@@ -53,12 +53,10 @@ library FixedPointMath {
         assembly {
             // Multiply with overflow detection using mulmod
             let mm := mulmod(x, y, not(0))
-            
+
             // Check for overflow: if (x * y) / x != y
-            if iszero(eq(div(mm, x), y)) {
-                revert(0, 0) // Bubble up overflow error
-            }
-            
+            if iszero(eq(div(mm, x), y)) { revert(0, 0) } // Bubble up overflow error
+
             // Divide by Q96 to maintain Q64.96 precision
             result := div(mm, Q96)
         }
@@ -72,11 +70,11 @@ library FixedPointMath {
      */
     function mulUp(uint256 x, uint256 y) internal pure returns (uint256 result) {
         result = mul(x, y);
-        
+
         // Round up if there's a remainder
         if (result != 0 && mulmod(x, y, Q96) != 0) {
-            unchecked { 
-                result += 1; 
+            unchecked {
+                result += 1;
             }
         }
     }
@@ -99,7 +97,7 @@ library FixedPointMath {
     /**
      * @notice Divide two Q64.96 numbers, rounding up
      * @param x Numerator in Q64.96 format
-     * @param y Denominator in Q64.96 format  
+     * @param y Denominator in Q64.96 format
      * @return result x / y as Q64.96 (rounded up)
      * @dev Reverts on division by zero
      */
@@ -145,14 +143,14 @@ library FixedPointMath {
      */
     function sqrt(uint256 x) internal pure returns (uint256 r) {
         if (x == 0) return 0;
-        
+
         // Handle edge case for maximum value
         if (x == type(uint256).max) return fromUint(type(uint128).max);
 
         // Initial guess: x / 2 + 1
         r = x;
         uint256 rOld;
-        
+
         // Babylonian method with convergence check
         do {
             rOld = r;
@@ -231,13 +229,13 @@ library FixedPointMath {
         uint256 z = x;
 
         // Range reduction: bring z into [1, 2)
-        while (z >= fromUint(2)) { 
-            z >>= 1; 
-            y += int256(Q96); 
+        while (z >= fromUint(2)) {
+            z >>= 1;
+            y += int256(Q96);
         }
-        while (z < fromUint(1)) { 
-            z <<= 1; 
-            y -= int256(Q96); 
+        while (z < fromUint(1)) {
+            z <<= 1;
+            y -= int256(Q96);
         }
 
         // Newton iteration for enhanced precision
