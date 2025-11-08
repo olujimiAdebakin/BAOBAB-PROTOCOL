@@ -6,5 +6,5 @@ pragma solidity ^0.8.24;
  * @notice TODO: Add library description
  */
 library BasketTypes {
-    // TODO: Implement library
+// TODO: Implement library
 }

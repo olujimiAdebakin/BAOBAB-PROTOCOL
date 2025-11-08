@@ -18,13 +18,13 @@ library Statistics {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // ERRORS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Reverts when insufficient data is provided for statistical calculations
     error InsufficientData();
-    
+
     /// @dev Reverts when input arrays have mismatched lengths
     error ArrayLengthMismatch();
-    
+
     /// @dev Reverts when input parameters are invalid
     error InvalidInput();
 
@@ -66,12 +66,12 @@ library Statistics {
      */
     function mean(uint256[] memory values) internal pure returns (uint256 meanValue) {
         if (values.length == 0) revert InsufficientData();
-        
+
         uint256 total = 0;
         for (uint256 i = 0; i < values.length; i++) {
             total += values[i];
         }
-        
+
         meanValue = total / values.length;
     }
 
@@ -83,9 +83,9 @@ library Statistics {
      */
     function median(uint256[] memory values) internal pure returns (uint256 medianValue) {
         if (values.length == 0) revert InsufficientData();
-        
+
         uint256[] memory sorted = _sort(values);
-        
+
         if (sorted.length % 2 == 0) {
             // Even number of elements - average two middle values
             uint256 mid1 = sorted[sorted.length / 2 - 1];
@@ -105,15 +105,15 @@ library Statistics {
      */
     function standardDeviation(uint256[] memory values) internal pure returns (uint256 stdDev) {
         if (values.length < 2) revert InsufficientData();
-        
+
         uint256 avg = mean(values);
         uint256 sumSquaredDiffs = 0;
-        
+
         for (uint256 i = 0; i < values.length; i++) {
             uint256 diff = values[i] > avg ? values[i] - avg : avg - values[i];
             sumSquaredDiffs += diff * diff;
         }
-        
+
         uint256 varianced = sumSquaredDiffs / values.length;
         stdDev = varianced.sqrt();
     }
@@ -125,15 +125,15 @@ library Statistics {
      */
     function variance(uint256[] memory values) internal pure returns (uint256 varianceValue) {
         if (values.length < 2) revert InsufficientData();
-        
+
         uint256 avg = mean(values);
         uint256 sumSquaredDiffs = 0;
-        
+
         for (uint256 i = 0; i < values.length; i++) {
             uint256 diff = values[i] > avg ? values[i] - avg : avg - values[i];
             sumSquaredDiffs += diff * diff;
         }
-        
+
         varianceValue = sumSquaredDiffs / values.length;
     }
 
@@ -144,7 +144,7 @@ library Statistics {
      */
     function min(uint256[] memory values) internal pure returns (uint256 minValue) {
         if (values.length == 0) revert InsufficientData();
-        
+
         minValue = values[0];
         for (uint256 i = 1; i < values.length; i++) {
             if (values[i] < minValue) {
@@ -160,7 +160,7 @@ library Statistics {
      */
     function max(uint256[] memory values) internal pure returns (uint256 maxValue) {
         if (values.length == 0) revert InsufficientData();
-        
+
         maxValue = values[0];
         for (uint256 i = 1; i < values.length; i++) {
             if (values[i] > maxValue) {
@@ -176,7 +176,7 @@ library Statistics {
      */
     function summary(uint256[] memory values) internal pure returns (Summary memory summary_) {
         if (values.length == 0) revert InsufficientData();
-        
+
         summary_.count = values.length;
         summary_.mean = mean(values);
         summary_.median = median(values);
@@ -184,7 +184,7 @@ library Statistics {
         summary_.variance = variance(values);
         summary_.min = min(values);
         summary_.max = max(values);
-        
+
         uint256 total = 0;
         for (uint256 i = 0; i < values.length; i++) {
             total += values[i];
@@ -206,25 +206,25 @@ library Statistics {
     function correlation(uint256[] memory x, uint256[] memory y) internal pure returns (int256 correlationValue) {
         if (x.length != y.length) revert ArrayLengthMismatch();
         if (x.length < 2) revert InsufficientData();
-        
+
         uint256 meanX = mean(x);
         uint256 meanY = mean(y);
-        
+
         int256 covValue = 0;
         uint256 varianceX = 0;
         uint256 varianceY = 0;
-        
+
         for (uint256 i = 0; i < x.length; i++) {
             int256 diffX = int256(x[i]) - int256(meanX);
             int256 diffY = int256(y[i]) - int256(meanY);
-            
+
             covValue += diffX * diffY;
             varianceX += uint256(diffX * diffX);
             varianceY += uint256(diffY * diffY);
         }
-        
+
         if (varianceX == 0 || varianceY == 0) return 0;
-        
+
         uint256 denominator = (varianceX.sqrt()).mul(varianceY.sqrt());
         correlationValue = (covValue * int256(FixedPointMath.Q96)) / int256(denominator);
     }
@@ -238,15 +238,15 @@ library Statistics {
     function covariance(uint256[] memory x, uint256[] memory y) internal pure returns (int256 covarianceValue) {
         if (x.length != y.length) revert ArrayLengthMismatch();
         if (x.length < 2) revert InsufficientData();
-        
+
         uint256 meanX = mean(x);
         uint256 meanY = mean(y);
-        
+
         int256 sum = 0;
         for (uint256 i = 0; i < x.length; i++) {
             sum += (int256(x[i]) - int256(meanX)) * (int256(y[i]) - int256(meanY));
         }
-        
+
         covarianceValue = sum / int256(x.length);
     }
 
@@ -256,12 +256,16 @@ library Statistics {
      * @param marketReturns Market returns series
      * @return betaValue Beta coefficient in Q64.96 format
      */
-    function beta(uint256[] memory assetReturns, uint256[] memory marketReturns) internal pure returns (int256 betaValue) {
+    function beta(uint256[] memory assetReturns, uint256[] memory marketReturns)
+        internal
+        pure
+        returns (int256 betaValue)
+    {
         int256 cov = covariance(assetReturns, marketReturns);
         uint256 marketVariance = variance(marketReturns);
-        
+
         if (marketVariance == 0) return 0;
-        
+
         betaValue = (cov * int256(FixedPointMath.Q96)) / int256(marketVariance);
     }
 
@@ -279,14 +283,15 @@ library Statistics {
     function valueAtRisk(int256[] memory returns_, uint256 confidence) internal pure returns (int256 varValue) {
         if (returns_.length == 0) revert InsufficientData();
         if (confidence > PercentageMath.ONE_HUNDRED_PERCENT) revert InvalidInput();
-        
+
         // Sort returns
         int256[] memory sortedReturns = _sortInt(returns_);
-        
+
         // Find percentile index (VaR is the negative of the percentile)
-        uint256 index = (sortedReturns.length * (PercentageMath.ONE_HUNDRED_PERCENT - confidence)) / PercentageMath.PERCENTAGE_FACTOR;
+        uint256 index = (sortedReturns.length * (PercentageMath.ONE_HUNDRED_PERCENT - confidence))
+            / PercentageMath.PERCENTAGE_FACTOR;
         index = index >= sortedReturns.length ? sortedReturns.length - 1 : index;
-        
+
         varValue = -sortedReturns[index];
     }
 
@@ -297,22 +302,26 @@ library Statistics {
      * @return cvarValue Conditional VaR in basis points
      * @dev Average of losses beyond VaR
      */
-    function conditionalValueAtRisk(int256[] memory returns_, uint256 confidence) internal pure returns (int256 cvarValue) {
+    function conditionalValueAtRisk(int256[] memory returns_, uint256 confidence)
+        internal
+        pure
+        returns (int256 cvarValue)
+    {
         if (returns_.length == 0) revert InsufficientData();
-        
+
         int256 varValue = valueAtRisk(returns_, confidence);
-        
+
         // Calculate average of returns worse than VaR
         int256 sum = 0;
         uint256 count = 0;
-        
+
         for (uint256 i = 0; i < returns_.length; i++) {
             if (returns_[i] < -varValue) {
                 sum += returns_[i];
                 count++;
             }
         }
-        
+
         if (count == 0) return varValue;
         cvarValue = -sum / int256(count);
     }
@@ -324,10 +333,10 @@ library Statistics {
      */
     function maxDrawdown(uint256[] memory values) internal pure returns (uint256 maxDrawdownValue) {
         if (values.length < 2) revert InsufficientData();
-        
+
         uint256 peak = values[0];
         uint256 maxDD = 0;
-        
+
         for (uint256 i = 1; i < values.length; i++) {
             if (values[i] > peak) {
                 peak = values[i];
@@ -338,7 +347,7 @@ library Statistics {
                 }
             }
         }
-        
+
         maxDrawdownValue = maxDD;
     }
 
@@ -348,23 +357,27 @@ library Statistics {
      * @param riskFreeRate Risk-free rate in basis points
      * @return sharpeRatioValue Sharpe ratio in Q64.96 format
      */
-    function sharpeRatio(int256[] memory returns_, uint256 riskFreeRate) internal pure returns (int256 sharpeRatioValue) {
+    function sharpeRatio(int256[] memory returns_, uint256 riskFreeRate)
+        internal
+        pure
+        returns (int256 sharpeRatioValue)
+    {
         if (returns_.length < 2) revert InsufficientData();
-        
+
         // Convert returns to uint256 for calculations
         uint256[] memory absReturns = new uint256[](returns_.length);
         int256 sum = 0;
-        
+
         for (uint256 i = 0; i < returns_.length; i++) {
             absReturns[i] = returns_[i] > 0 ? uint256(returns_[i]) : uint256(-returns_[i]);
             sum += returns_[i];
         }
-        
+
         int256 avgReturn = sum / int256(returns_.length);
         uint256 stdDev = standardDeviation(absReturns);
-        
+
         if (stdDev == 0) return type(int256).max;
-        
+
         int256 excessReturn = avgReturn - int256(riskFreeRate);
         sharpeRatioValue = (excessReturn * int256(FixedPointMath.Q96)) / int256(stdDev);
     }
@@ -375,30 +388,34 @@ library Statistics {
      * @param riskFreeRate Risk-free rate in basis points
      * @return sortinoRatioValue Sortino ratio in Q64.96 format
      */
-    function sortinoRatio(int256[] memory returns_, uint256 riskFreeRate) internal pure returns (int256 sortinoRatioValue) {
+    function sortinoRatio(int256[] memory returns_, uint256 riskFreeRate)
+        internal
+        pure
+        returns (int256 sortinoRatioValue)
+    {
         if (returns_.length < 2) revert InsufficientData();
-        
+
         int256 sum = 0;
         uint256 downsideVariance = 0;
         uint256 downsideCount = 0;
-        
+
         for (uint256 i = 0; i < returns_.length; i++) {
             sum += returns_[i];
-            
+
             if (returns_[i] < int256(riskFreeRate)) {
                 int256 downside = returns_[i] - int256(riskFreeRate);
                 downsideVariance += uint256(downside * downside);
                 downsideCount++;
             }
         }
-        
+
         int256 avgReturn = sum / int256(returns_.length);
-        
+
         if (downsideCount == 0) return type(int256).max;
-        
+
         uint256 downsideStdDev = (downsideVariance / downsideCount).sqrt();
         if (downsideStdDev == 0) return type(int256).max;
-        
+
         int256 excessReturn = avgReturn - int256(riskFreeRate);
         sortinoRatioValue = (excessReturn * int256(FixedPointMath.Q96)) / int256(downsideStdDev);
     }
@@ -409,9 +426,13 @@ library Statistics {
      * @param periodsPerYear Number of periods per year for annualization
      * @return volatilityValue Annualized volatility in basis points
      */
-    function volatility(uint256[] memory returns_, uint256 periodsPerYear) internal pure returns (uint256 volatilityValue) {
+    function volatility(uint256[] memory returns_, uint256 periodsPerYear)
+        internal
+        pure
+        returns (uint256 volatilityValue)
+    {
         if (returns_.length < 2) revert InsufficientData();
-        
+
         uint256 stdDev = standardDeviation(returns_);
         volatilityValue = stdDev * (periodsPerYear.sqrt());
     }
@@ -426,14 +447,15 @@ library Statistics {
      * @param period Number of periods for moving average
      * @return smaValues Array of SMA values
      */
-    function simpleMovingAverage(
-        uint256[] memory values,
-        uint256 period
-    ) internal pure returns (uint256[] memory smaValues) {
+    function simpleMovingAverage(uint256[] memory values, uint256 period)
+        internal
+        pure
+        returns (uint256[] memory smaValues)
+    {
         if (values.length < period) revert InsufficientData();
-        
+
         smaValues = new uint256[](values.length - period + 1);
-        
+
         for (uint256 i = 0; i <= values.length - period; i++) {
             uint256 sum = 0;
             for (uint256 j = 0; j < period; j++) {
@@ -449,27 +471,29 @@ library Statistics {
      * @param period Number of periods for EMA
      * @return emaValues Array of EMA values
      */
-    function exponentialMovingAverage(
-        uint256[] memory values,
-        uint256 period
-    ) internal pure returns (uint256[] memory emaValues) {
+    function exponentialMovingAverage(uint256[] memory values, uint256 period)
+        internal
+        pure
+        returns (uint256[] memory emaValues)
+    {
         if (values.length < period) revert InsufficientData();
-        
+
         emaValues = new uint256[](values.length - period + 1);
-        
+
         // Calculate SMA for first value
         uint256 sum = 0;
         for (uint256 i = 0; i < period; i++) {
             sum += values[i];
         }
         emaValues[0] = sum / period;
-        
+
         // Calculate multiplier
         uint256 multiplier = (2 * FixedPointMath.Q96) / (period + 1);
-        
+
         // Calculate EMA for remaining values
         for (uint256 i = period; i < values.length; i++) {
-            uint256 ema = (values[i] * multiplier + emaValues[i - period] * (FixedPointMath.Q96 - multiplier)) / FixedPointMath.Q96;
+            uint256 ema = (values[i] * multiplier + emaValues[i - period] * (FixedPointMath.Q96 - multiplier))
+                / FixedPointMath.Q96;
             emaValues[i - period + 1] = ema;
         }
     }
@@ -486,7 +510,7 @@ library Statistics {
         for (uint256 i = 0; i < arr.length; i++) {
             sorted[i] = arr[i];
         }
-        
+
         for (uint256 i = 0; i < sorted.length; i++) {
             for (uint256 j = i + 1; j < sorted.length; j++) {
                 if (sorted[i] > sorted[j]) {
@@ -494,7 +518,7 @@ library Statistics {
                 }
             }
         }
-        
+
         return sorted;
     }
 
@@ -506,7 +530,7 @@ library Statistics {
         for (uint256 i = 0; i < arr.length; i++) {
             sorted[i] = arr[i];
         }
-        
+
         for (uint256 i = 0; i < sorted.length; i++) {
             for (uint256 j = i + 1; j < sorted.length; j++) {
                 if (sorted[i] > sorted[j]) {
@@ -514,7 +538,7 @@ library Statistics {
                 }
             }
         }
-        
+
         return sorted;
     }
 }

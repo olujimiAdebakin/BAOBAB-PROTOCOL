@@ -93,23 +93,11 @@ contract CircuitBreaker is SecurityBase {
     //                                           EVENTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    event CircuitTripped(
-        bytes32 indexed marketId,
-        TripReason reason,
-        uint256 timestamp
-    );
+    event CircuitTripped(bytes32 indexed marketId, TripReason reason, uint256 timestamp);
 
-    event CircuitReset(
-        bytes32 indexed marketId,
-        address indexed resetter,
-        uint256 timestamp
-    );
+    event CircuitReset(bytes32 indexed marketId, address indexed resetter, uint256 timestamp);
 
-    event ConfigUpdated(
-        uint16 maxPriceDeviationBps,
-        uint16 maxVolumeSpikeBps,
-        uint16 maxLiquidationRateBps
-    );
+    event ConfigUpdated(uint16 maxPriceDeviationBps, uint16 maxVolumeSpikeBps, uint16 maxLiquidationRateBps);
 
     event GuardianAdded(address indexed guardian);
     event GuardianRemoved(address indexed guardian);
@@ -133,15 +121,15 @@ contract CircuitBreaker is SecurityBase {
 
     constructor(address _admin) {
         if (_admin == address(0)) revert CircuitBreaker__InvalidConfig();
-        
+
         admin = _admin;
         guardians[_admin] = true;
-        
+
         // Default configuration
         config = CircuitBreakerConfig({
-            maxPriceDeviationBps: 1000,      // 10% price swing
-            maxVolumeSpikeBps: 30000,        // 300% volume spike
-            maxLiquidationRateBps: 2000,     // 20% liquidation ratio
+            maxPriceDeviationBps: 1000, // 10% price swing
+            maxVolumeSpikeBps: 30000, // 300% volume spike
+            maxLiquidationRateBps: 2000, // 20% liquidation ratio
             cooldownPeriod: 15 minutes,
             observationWindow: 5 minutes,
             isEnabled: true
@@ -180,14 +168,11 @@ contract CircuitBreaker is SecurityBase {
      * @param currentPrice Current market price (18 decimals)
      * @return bool True if circuit should trip
      */
-    function checkPriceDeviation(
-        bytes32 marketId,
-        uint256 currentPrice
-    ) public returns (bool) {
+    function checkPriceDeviation(bytes32 marketId, uint256 currentPrice) public returns (bool) {
         if (!config.isEnabled) return false;
 
         CircuitState storage state = circuitStates[marketId];
-        
+
         // Initialize reference price if first check
         if (state.referencePrice == 0) {
             state.referencePrice = currentPrice;
@@ -217,14 +202,11 @@ contract CircuitBreaker is SecurityBase {
      * @param currentVolume Current trading volume (18 decimals)
      * @return bool True if circuit should trip
      */
-    function checkVolumeSpike(
-        bytes32 marketId,
-        uint256 currentVolume
-    ) public returns (bool) {
+    function checkVolumeSpike(bytes32 marketId, uint256 currentVolume) public returns (bool) {
         if (!config.isEnabled) return false;
 
         CircuitState storage state = circuitStates[marketId];
-        
+
         // Initialize reference volume if first check
         if (state.referenceVolume == 0) {
             state.referenceVolume = currentVolume;
@@ -234,7 +216,7 @@ contract CircuitBreaker is SecurityBase {
         // Calculate spike
         if (currentVolume > state.referenceVolume) {
             uint256 spike = ((currentVolume - state.referenceVolume) * 10000) / state.referenceVolume;
-            
+
             if (spike > config.maxVolumeSpikeBps) {
                 _tripCircuit(marketId, TripReason.VOLUME_SPIKE);
                 return true;
@@ -251,11 +233,10 @@ contract CircuitBreaker is SecurityBase {
      * @param liquidatedPositions Positions liquidated (18 decimals)
      * @return bool True if circuit should trip
      */
-    function checkLiquidationCascade(
-        bytes32 marketId,
-        uint256 totalPositions,
-        uint256 liquidatedPositions
-    ) public returns (bool) {
+    function checkLiquidationCascade(bytes32 marketId, uint256 totalPositions, uint256 liquidatedPositions)
+        public
+        returns (bool)
+    {
         if (!config.isEnabled || totalPositions == 0) return false;
 
         uint256 liquidationRatio = (liquidatedPositions * 10000) / totalPositions;
@@ -287,14 +268,11 @@ contract CircuitBreaker is SecurityBase {
      * @param newReferencePrice New baseline price (18 decimals)
      * @dev Only callable by guardians after cooldown period
      */
-    function resetCircuit(
-        bytes32 marketId,
-        uint256 newReferencePrice
-    ) external onlyGuardian {
+    function resetCircuit(bytes32 marketId, uint256 newReferencePrice) external onlyGuardian {
         CircuitState storage state = circuitStates[marketId];
 
         if (!state.isTripped) revert CircuitBreaker__CircuitNotTripped();
-        
+
         // Ensure cooldown period has elapsed
         if (block.timestamp < state.tripTime + config.cooldownPeriod) {
             revert CircuitBreaker__CooldownNotElapsed();
@@ -328,20 +306,15 @@ contract CircuitBreaker is SecurityBase {
      * @param _maxVolumeSpikeBps New max volume spike (basis points)
      * @param _maxLiquidationRateBps New max liquidation ratio (basis points)
      */
-    function updateConfig(
-        uint16 _maxPriceDeviationBps,
-        uint16 _maxVolumeSpikeBps,
-        uint16 _maxLiquidationRateBps
-    ) external onlyAdmin {
+    function updateConfig(uint16 _maxPriceDeviationBps, uint16 _maxVolumeSpikeBps, uint16 _maxLiquidationRateBps)
+        external
+        onlyAdmin
+    {
         config.maxPriceDeviationBps = _maxPriceDeviationBps;
         config.maxVolumeSpikeBps = _maxVolumeSpikeBps;
         config.maxLiquidationRateBps = _maxLiquidationRateBps;
 
-        emit ConfigUpdated(
-            _maxPriceDeviationBps,
-            _maxVolumeSpikeBps,
-            _maxLiquidationRateBps
-        );
+        emit ConfigUpdated(_maxPriceDeviationBps, _maxVolumeSpikeBps, _maxLiquidationRateBps);
     }
 
     /**
@@ -380,7 +353,7 @@ contract CircuitBreaker is SecurityBase {
      */
     function _tripCircuit(bytes32 marketId, TripReason reason) internal {
         CircuitState storage state = circuitStates[marketId];
-        
+
         state.isTripped = true;
         state.tripReason = reason;
         state.tripTime = block.timestamp;

@@ -12,16 +12,16 @@ library ArrayUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // ERRORS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Reverts when array index is out of bounds
     error IndexOutOfBounds();
-    
+
     /// @dev Reverts when array is empty
     error EmptyArray();
-    
+
     /// @dev Reverts when arrays have mismatched lengths
     error ArrayLengthMismatch();
-    
+
     /// @dev Reverts when element not found in array
     error ElementNotFound();
 
@@ -40,23 +40,23 @@ library ArrayUtils {
      * @return newArray New array with element inserted
      * @dev Reverts if index is out of bounds
      */
-    function insert(
-        uint256[] memory array,
-        uint256 index,
-        uint256 element
-    ) internal pure returns (uint256[] memory newArray) {
+    function insert(uint256[] memory array, uint256 index, uint256 element)
+        internal
+        pure
+        returns (uint256[] memory newArray)
+    {
         if (index > array.length) revert IndexOutOfBounds();
-        
+
         newArray = new uint256[](array.length + 1);
-        
+
         // Copy elements before index
         for (uint256 i = 0; i < index; i++) {
             newArray[i] = array[i];
         }
-        
+
         // Insert new element
         newArray[index] = element;
-        
+
         // Copy elements after index
         for (uint256 i = index; i < array.length; i++) {
             newArray[i + 1] = array[i];
@@ -70,20 +70,17 @@ library ArrayUtils {
      * @return newArray New array with element removed
      * @dev Reverts if index is out of bounds
      */
-    function removeAt(
-        uint256[] memory array,
-        uint256 index
-    ) internal pure returns (uint256[] memory newArray) {
+    function removeAt(uint256[] memory array, uint256 index) internal pure returns (uint256[] memory newArray) {
         if (array.length == 0) revert EmptyArray();
         if (index >= array.length) revert IndexOutOfBounds();
-        
+
         newArray = new uint256[](array.length - 1);
-        
+
         // Copy elements before index
         for (uint256 i = 0; i < index; i++) {
             newArray[i] = array[i];
         }
-        
+
         // Copy elements after index
         for (uint256 i = index + 1; i < array.length; i++) {
             newArray[i - 1] = array[i];
@@ -97,13 +94,10 @@ library ArrayUtils {
      * @return newArray New array with element removed
      * @dev Reverts if element not found
      */
-    function removeElement(
-        uint256[] memory array,
-        uint256 element
-    ) internal pure returns (uint256[] memory newArray) {
+    function removeElement(uint256[] memory array, uint256 element) internal pure returns (uint256[] memory newArray) {
         int256 index = indexOf(array, element);
         if (index == -1) revert ElementNotFound();
-        
+
         return removeAt(array, uint256(index));
     }
 
@@ -113,16 +107,13 @@ library ArrayUtils {
      * @param element Element to append
      * @return newArray New array with element appended
      */
-    function append(
-        uint256[] memory array,
-        uint256 element
-    ) internal pure returns (uint256[] memory newArray) {
+    function append(uint256[] memory array, uint256 element) internal pure returns (uint256[] memory newArray) {
         newArray = new uint256[](array.length + 1);
-        
+
         for (uint256 i = 0; i < array.length; i++) {
             newArray[i] = array[i];
         }
-        
+
         newArray[array.length] = element;
     }
 
@@ -132,10 +123,7 @@ library ArrayUtils {
      * @param element Element to prepend
      * @return newArray New array with element prepended
      */
-    function prepend(
-        uint256[] memory array,
-        uint256 element
-    ) internal pure returns (uint256[] memory newArray) {
+    function prepend(uint256[] memory array, uint256 element) internal pure returns (uint256[] memory newArray) {
         return insert(array, 0, element);
     }
 
@@ -145,16 +133,13 @@ library ArrayUtils {
      * @param b Second array
      * @return newArray Concatenated array
      */
-    function concat(
-        uint256[] memory a,
-        uint256[] memory b
-    ) internal pure returns (uint256[] memory newArray) {
+    function concat(uint256[] memory a, uint256[] memory b) internal pure returns (uint256[] memory newArray) {
         newArray = new uint256[](a.length + b.length);
-        
+
         for (uint256 i = 0; i < a.length; i++) {
             newArray[i] = a[i];
         }
-        
+
         for (uint256 i = 0; i < b.length; i++) {
             newArray[a.length + i] = b[i];
         }
@@ -170,10 +155,7 @@ library ArrayUtils {
      * @param element Element to find
      * @return index Index of element, or -1 if not found
      */
-    function indexOf(
-        uint256[] memory array,
-        uint256 element
-    ) internal pure returns (int256) {
+    function indexOf(uint256[] memory array, uint256 element) internal pure returns (int256) {
         for (uint256 i = 0; i < array.length; i++) {
             if (array[i] == element) {
                 return int256(i);
@@ -188,10 +170,7 @@ library ArrayUtils {
      * @param element Element to check
      * @return contains True if array contains element
      */
-    function contains(
-        uint256[] memory array,
-        uint256 element
-    ) internal pure returns (bool) {
+    function contains(uint256[] memory array, uint256 element) internal pure returns (bool) {
         return indexOf(array, element) != -1;
     }
 
@@ -201,23 +180,20 @@ library ArrayUtils {
      * @param element Element to find
      * @return indices Array of indices where element is found
      */
-    function indicesOf(
-        uint256[] memory array,
-        uint256 element
-    ) internal pure returns (uint256[] memory indices) {
+    function indicesOf(uint256[] memory array, uint256 element) internal pure returns (uint256[] memory indices) {
         uint256 count = 0;
-        
+
         // First pass: count occurrences
         for (uint256 i = 0; i < array.length; i++) {
             if (array[i] == element) {
                 count++;
             }
         }
-        
+
         // Second pass: record indices
         indices = new uint256[](count);
         uint256 currentIndex = 0;
-        
+
         for (uint256 i = 0; i < array.length; i++) {
             if (array[i] == element) {
                 indices[currentIndex] = i;
@@ -234,7 +210,7 @@ library ArrayUtils {
      */
     function min(uint256[] memory array) internal pure returns (uint256) {
         if (array.length == 0) revert EmptyArray();
-        
+
         uint256 minValue = array[0];
         for (uint256 i = 1; i < array.length; i++) {
             if (array[i] < minValue) {
@@ -252,7 +228,7 @@ library ArrayUtils {
      */
     function max(uint256[] memory array) internal pure returns (uint256) {
         if (array.length == 0) revert EmptyArray();
-        
+
         uint256 maxValue = array[0];
         for (uint256 i = 1; i < array.length; i++) {
             if (array[i] > maxValue) {
@@ -296,19 +272,15 @@ library ArrayUtils {
      * @return slice Sliced array
      * @dev Reverts if indices are out of bounds
      */
-    function slice(
-        uint256[] memory array,
-        uint256 start,
-        uint256 end
-    ) internal pure returns (uint256[] memory) {
+    function slice(uint256[] memory array, uint256 start, uint256 end) internal pure returns (uint256[] memory) {
         if (start > end || end > array.length) revert IndexOutOfBounds();
-        
+
         uint256[] memory sliceArray = new uint256[](end - start);
-        
+
         for (uint256 i = start; i < end; i++) {
             sliceArray[i - start] = array[i];
         }
-        
+
         return sliceArray;
     }
 
@@ -318,10 +290,7 @@ library ArrayUtils {
      * @param n Number of elements to take
      * @return firstN First n elements
      */
-    function take(
-        uint256[] memory array,
-        uint256 n
-    ) internal pure returns (uint256[] memory) {
+    function take(uint256[] memory array, uint256 n) internal pure returns (uint256[] memory) {
         if (n > array.length) n = array.length;
         return slice(array, 0, n);
     }
@@ -332,10 +301,7 @@ library ArrayUtils {
      * @param n Number of elements to take
      * @return lastN Last n elements
      */
-    function takeLast(
-        uint256[] memory array,
-        uint256 n
-    ) internal pure returns (uint256[] memory) {
+    function takeLast(uint256[] memory array, uint256 n) internal pure returns (uint256[] memory) {
         if (n > array.length) n = array.length;
         return slice(array, array.length - n, array.length);
     }
@@ -346,15 +312,12 @@ library ArrayUtils {
      * @param chunkSize Size of each chunk
      * @return chunks Array of chunks
      */
-    function chunk(
-        uint256[] memory array,
-        uint256 chunkSize
-    ) internal pure returns (uint256[][] memory chunks) {
+    function chunk(uint256[] memory array, uint256 chunkSize) internal pure returns (uint256[][] memory chunks) {
         if (chunkSize == 0) revert InvalidInput();
-        
+
         uint256 numChunks = (array.length + chunkSize - 1) / chunkSize;
         chunks = new uint256[][](numChunks);
-        
+
         for (uint256 i = 0; i < numChunks; i++) {
             uint256 start = i * chunkSize;
             uint256 end = start + chunkSize > array.length ? array.length : start + chunkSize;
@@ -373,17 +336,17 @@ library ArrayUtils {
      */
     function unique(uint256[] memory array) internal pure returns (uint256[] memory uniqueArray) {
         if (array.length == 0) return array;
-        
+
         uint256[] memory temp = new uint256[](array.length);
         uint256 uniqueCount = 0;
-        
+
         for (uint256 i = 0; i < array.length; i++) {
             if (!_contains(temp, array[i], uniqueCount)) {
                 temp[uniqueCount] = array[i];
                 uniqueCount++;
             }
         }
-        
+
         uniqueArray = new uint256[](uniqueCount);
         for (uint256 i = 0; i < uniqueCount; i++) {
             uniqueArray[i] = temp[i];
@@ -396,20 +359,21 @@ library ArrayUtils {
      * @param b Second array
      * @return intersection Array of common elements
      */
-    function intersections(
-        uint256[] memory a,
-        uint256[] memory b
-    ) internal pure returns (uint256[] memory intersection) {
+    function intersections(uint256[] memory a, uint256[] memory b)
+        internal
+        pure
+        returns (uint256[] memory intersection)
+    {
         uint256[] memory temp = new uint256[](a.length < b.length ? a.length : b.length);
         uint256 count = 0;
-        
+
         for (uint256 i = 0; i < a.length; i++) {
             if (contains(b, a[i]) && !_contains(temp, a[i], count)) {
                 temp[count] = a[i];
                 count++;
             }
         }
-        
+
         intersection = new uint256[](count);
         for (uint256 i = 0; i < count; i++) {
             intersection[i] = temp[i];
@@ -422,10 +386,7 @@ library ArrayUtils {
      * @param b Second array
      * @return union Array of all unique elements from both arrays
      */
-    function union(
-        uint256[] memory a,
-        uint256[] memory b
-    ) internal pure returns (uint256[] memory) {
+    function union(uint256[] memory a, uint256[] memory b) internal pure returns (uint256[] memory) {
         return unique(concat(a, b));
     }
 
@@ -435,20 +396,17 @@ library ArrayUtils {
      * @param b Second array
      * @return difference Elements in a but not in b
      */
-    function differences(
-        uint256[] memory a,
-        uint256[] memory b
-    ) internal pure returns (uint256[] memory difference) {
+    function differences(uint256[] memory a, uint256[] memory b) internal pure returns (uint256[] memory difference) {
         uint256[] memory temp = new uint256[](a.length);
         uint256 count = 0;
-        
+
         for (uint256 i = 0; i < a.length; i++) {
             if (!contains(b, a[i])) {
                 temp[count] = a[i];
                 count++;
             }
         }
-        
+
         difference = new uint256[](count);
         for (uint256 i = 0; i < count; i++) {
             difference[i] = temp[i];
@@ -466,7 +424,7 @@ library ArrayUtils {
      */
     function reverse(uint256[] memory array) internal pure returns (uint256[] memory reversed) {
         reversed = new uint256[](array.length);
-        
+
         for (uint256 i = 0; i < array.length; i++) {
             reversed[i] = array[array.length - 1 - i];
         }
@@ -478,12 +436,13 @@ library ArrayUtils {
      * @param func Mapping function
      * @return mapped Array with mapped elements
      */
-    function map(
-        uint256[] memory array,
-        function(uint256) pure returns (uint256) func
-    ) internal pure returns (uint256[] memory mapped) {
+    function map(uint256[] memory array, function(uint256) pure returns (uint256) func)
+        internal
+        pure
+        returns (uint256[] memory mapped)
+    {
         mapped = new uint256[](array.length);
-        
+
         for (uint256 i = 0; i < array.length; i++) {
             mapped[i] = func(array[i]);
         }
@@ -495,20 +454,21 @@ library ArrayUtils {
      * @param predicate Filter function
      * @return filtered Array with filtered elements
      */
-    function filter(
-        uint256[] memory array,
-        function(uint256) pure returns (bool) predicate
-    ) internal pure returns (uint256[] memory filtered) {
+    function filter(uint256[] memory array, function(uint256) pure returns (bool) predicate)
+        internal
+        pure
+        returns (uint256[] memory filtered)
+    {
         uint256[] memory temp = new uint256[](array.length);
         uint256 count = 0;
-        
+
         for (uint256 i = 0; i < array.length; i++) {
             if (predicate(array[i])) {
                 temp[count] = array[i];
                 count++;
             }
         }
-        
+
         filtered = new uint256[](count);
         for (uint256 i = 0; i < count; i++) {
             filtered[i] = temp[i];
@@ -522,13 +482,13 @@ library ArrayUtils {
      * @param reducer Reduction function
      * @return result Reduced value
      */
-    function reduce(
-        uint256[] memory array,
-        uint256 initial,
-        function(uint256, uint256) pure returns (uint256) reducer
-    ) internal pure returns (uint256 result) {
+    function reduce(uint256[] memory array, uint256 initial, function(uint256, uint256) pure returns (uint256) reducer)
+        internal
+        pure
+        returns (uint256 result)
+    {
         result = initial;
-        
+
         for (uint256 i = 0; i < array.length; i++) {
             result = reducer(result, array[i]);
         }
@@ -541,11 +501,7 @@ library ArrayUtils {
     /**
      * @dev Check if array contains element (internal, with count)
      */
-    function _contains(
-        uint256[] memory array,
-        uint256 element,
-        uint256 count
-    ) private pure returns (bool) {
+    function _contains(uint256[] memory array, uint256 element, uint256 count) private pure returns (bool) {
         for (uint256 i = 0; i < count; i++) {
             if (array[i] == element) {
                 return true;
@@ -564,19 +520,16 @@ library ArrayUtils {
      * @param element Address to remove
      * @return newArray New array with address removed
      */
-    function removeAddress(
-        address[] memory array,
-        address element
-    ) internal pure returns (address[] memory newArray) {
+    function removeAddress(address[] memory array, address element) internal pure returns (address[] memory newArray) {
         int256 index = indexOfAddress(array, element);
         if (index == -1) revert ElementNotFound();
-        
+
         newArray = new address[](array.length - 1);
-        
+
         for (uint256 i = 0; i < uint256(index); i++) {
             newArray[i] = array[i];
         }
-        
+
         for (uint256 i = uint256(index) + 1; i < array.length; i++) {
             newArray[i - 1] = array[i];
         }
@@ -588,10 +541,7 @@ library ArrayUtils {
      * @param element Address to find
      * @return index Index of address, or -1 if not found
      */
-    function indexOfAddress(
-        address[] memory array,
-        address element
-    ) internal pure returns (int256) {
+    function indexOfAddress(address[] memory array, address element) internal pure returns (int256) {
         for (uint256 i = 0; i < array.length; i++) {
             if (array[i] == element) {
                 return int256(i);
@@ -606,10 +556,7 @@ library ArrayUtils {
      * @param element Address to check
      * @return contains True if array contains address
      */
-    function containsAddress(
-        address[] memory array,
-        address element
-    ) internal pure returns (bool) {
+    function containsAddress(address[] memory array, address element) internal pure returns (bool) {
         return indexOfAddress(array, element) != -1;
     }
 }

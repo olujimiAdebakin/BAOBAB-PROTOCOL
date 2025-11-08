@@ -63,17 +63,9 @@ contract RateLimiter {
     //                                           EVENTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    event RateLimitConfigured(
-        bytes32 indexed operationId,
-        uint256 maxRequests,
-        uint256 timeWindow
-    );
+    event RateLimitConfigured(bytes32 indexed operationId, uint256 maxRequests, uint256 timeWindow);
 
-    event RateLimitExceeded(
-        address indexed user,
-        bytes32 indexed operationId,
-        uint256 timestamp
-    );
+    event RateLimitExceeded(address indexed user, bytes32 indexed operationId, uint256 timestamp);
 
     event WhitelistUpdated(address indexed account, bool whitelisted);
     event GlobalStateToggled(bool enabled);
@@ -132,7 +124,7 @@ contract RateLimiter {
         if (!globalEnabled || whitelist[user]) return;
 
         RateLimitConfig memory config = rateLimitConfigs[operationId];
-        
+
         // Skip if operation has no rate limit
         if (!config.enabled || config.maxRequests == 0) return;
 
@@ -154,7 +146,7 @@ contract RateLimiter {
         // Check if limit exceeded
         if (state.requestCount > config.maxRequests) {
             uint256 retryAfter = (state.windowStart + config.timeWindow) - block.timestamp;
-            
+
             emit RateLimitExceeded(user, operationId, block.timestamp);
             revert RateLimiter__RateLimitExceeded(retryAfter);
         }
@@ -167,15 +159,16 @@ contract RateLimiter {
      * @return allowed True if operation is allowed
      * @return retryAfter Seconds until rate limit resets (0 if allowed)
      */
-    function checkRateLimitView(
-        address user,
-        bytes32 operationId
-    ) public view returns (bool allowed, uint256 retryAfter) {
+    function checkRateLimitView(address user, bytes32 operationId)
+        public
+        view
+        returns (bool allowed, uint256 retryAfter)
+    {
         // Allow if globally disabled or user is whitelisted
         if (!globalEnabled || whitelist[user]) return (true, 0);
 
         RateLimitConfig memory config = rateLimitConfigs[operationId];
-        
+
         // Allow if operation has no rate limit
         if (!config.enabled || config.maxRequests == 0) return (true, 0);
 
@@ -205,11 +198,10 @@ contract RateLimiter {
      * @param maxRequests Maximum requests allowed
      * @param timeWindow Time window in seconds
      */
-    function configureRateLimit(
-        string calldata operationName,
-        uint256 maxRequests,
-        uint256 timeWindow
-    ) external onlyAdmin {
+    function configureRateLimit(string calldata operationName, uint256 maxRequests, uint256 timeWindow)
+        external
+        onlyAdmin
+    {
         bytes32 operationId = keccak256(abi.encodePacked(operationName));
         _setRateLimit(operationName, maxRequests, timeWindow);
     }
@@ -219,10 +211,7 @@ contract RateLimiter {
      * @param operationName Operation name
      * @param enabled Whether rate limit is enabled
      */
-    function toggleRateLimit(
-        string calldata operationName,
-        bool enabled
-    ) external onlyAdmin {
+    function toggleRateLimit(string calldata operationName, bool enabled) external onlyAdmin {
         bytes32 operationId = keccak256(abi.encodePacked(operationName));
         rateLimitConfigs[operationId].enabled = enabled;
     }
@@ -259,10 +248,7 @@ contract RateLimiter {
      * @param operationName Operation name
      * @dev Emergency function to clear stuck rate limits
      */
-    function resetRateLimitState(
-        address user,
-        string calldata operationName
-    ) external onlyAdmin {
+    function resetRateLimitState(address user, string calldata operationName) external onlyAdmin {
         bytes32 operationId = keccak256(abi.encodePacked(operationName));
         delete rateLimitStates[user][operationId];
     }
@@ -277,20 +263,13 @@ contract RateLimiter {
      * @param maxRequests Maximum requests
      * @param timeWindow Time window in seconds
      */
-    function _setRateLimit(
-        string memory operationName,
-        uint256 maxRequests,
-        uint256 timeWindow
-    ) internal {
+    function _setRateLimit(string memory operationName, uint256 maxRequests, uint256 timeWindow) internal {
         if (timeWindow == 0) revert RateLimiter__InvalidConfig();
-        
+
         bytes32 operationId = keccak256(abi.encodePacked(operationName));
-        
-        rateLimitConfigs[operationId] = RateLimitConfig({
-            maxRequests: maxRequests,
-            timeWindow: timeWindow,
-            enabled: true
-        });
+
+        rateLimitConfigs[operationId] =
+            RateLimitConfig({maxRequests: maxRequests, timeWindow: timeWindow, enabled: true});
 
         emit RateLimitConfigured(operationId, maxRequests, timeWindow);
     }
@@ -304,9 +283,7 @@ contract RateLimiter {
      * @param operationName Operation name
      * @return config Rate limit configuration
      */
-    function getRateLimitConfig(
-        string calldata operationName
-    ) external view returns (RateLimitConfig memory config) {
+    function getRateLimitConfig(string calldata operationName) external view returns (RateLimitConfig memory config) {
         bytes32 operationId = keccak256(abi.encodePacked(operationName));
         return rateLimitConfigs[operationId];
     }
@@ -317,10 +294,11 @@ contract RateLimiter {
      * @param operationName Operation name
      * @return state Rate limit state
      */
-    function getRateLimitState(
-        address user,
-        string calldata operationName
-    ) external view returns (RateLimitState memory state) {
+    function getRateLimitState(address user, string calldata operationName)
+        external
+        view
+        returns (RateLimitState memory state)
+    {
         bytes32 operationId = keccak256(abi.encodePacked(operationName));
         return rateLimitStates[user][operationId];
     }
@@ -331,15 +309,16 @@ contract RateLimiter {
      * @param operationName Operation name
      * @return remaining Number of requests remaining in current window
      */
-    function getRemainingRequests(
-        address user,
-        string calldata operationName
-    ) external view returns (uint256 remaining) {
+    function getRemainingRequests(address user, string calldata operationName)
+        external
+        view
+        returns (uint256 remaining)
+    {
         if (whitelist[user] || !globalEnabled) return type(uint256).max;
 
         bytes32 operationId = keccak256(abi.encodePacked(operationName));
         RateLimitConfig memory config = rateLimitConfigs[operationId];
-        
+
         if (!config.enabled) return type(uint256).max;
 
         RateLimitState memory state = rateLimitStates[user][operationId];
@@ -353,7 +332,7 @@ contract RateLimiter {
         if (state.requestCount >= config.maxRequests) {
             return 0;
         }
-        
+
         return config.maxRequests - state.requestCount;
     }
 

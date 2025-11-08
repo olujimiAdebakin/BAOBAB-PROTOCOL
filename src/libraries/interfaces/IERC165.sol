@@ -7,11 +7,10 @@ pragma solidity ^0.8.24;
  * @notice Standard interface detection
  */
 interface IERC165 {
-
-        // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // EIP-165 INTERFACE FOR ERC165 SUPPORT
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /**
      * @notice Query if a contract implements an interface
      * @param interfaceId The interface identifier, as specified in ERC-165

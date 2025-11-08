@@ -39,9 +39,10 @@ contract EmergencyPauser is SecurityBase {
      */
     enum AuthorityLevel {
         NONE,
-        GUARDIAN,      // Can pause modules
-        ADMIN,         // Can pause/unpause modules
-        MULTISIG       // Can pause/unpause protocol-wide
+        GUARDIAN, // Can pause modules
+        ADMIN, // Can pause/unpause modules
+        MULTISIG // Can pause/unpause protocol-wide
+
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -143,10 +144,7 @@ contract EmergencyPauser is SecurityBase {
      * @param reason Reason for emergency pause
      * @dev Only callable by multisig
      */
-    function pauseProtocol(string calldata reason) 
-        external 
-        onlyAuthority(AuthorityLevel.MULTISIG) 
-    {
+    function pauseProtocol(string calldata reason) external onlyAuthority(AuthorityLevel.MULTISIG) {
         protocolPaused = true;
         emit ProtocolPaused(msg.sender, reason);
     }
@@ -155,10 +153,7 @@ contract EmergencyPauser is SecurityBase {
      * @notice Unpause protocol
      * @dev Only callable by multisig after timelock
      */
-    function unpauseProtocol() 
-        external 
-        onlyAuthority(AuthorityLevel.MULTISIG) 
-    {
+    function unpauseProtocol() external onlyAuthority(AuthorityLevel.MULTISIG) {
         protocolPaused = false;
         emit ProtocolUnpaused(msg.sender);
     }
@@ -170,13 +165,12 @@ contract EmergencyPauser is SecurityBase {
      * @param canUnpause Whether module can be unpaused later
      * @dev Guardians can pause, admins can pause with unpause ability
      */
-    function pauseModule(
-        bytes32 moduleId,
-        string calldata reason,
-        bool canUnpause
-    ) external onlyAuthority(AuthorityLevel.GUARDIAN) {
+    function pauseModule(bytes32 moduleId, string calldata reason, bool canUnpause)
+        external
+        onlyAuthority(AuthorityLevel.GUARDIAN)
+    {
         PauseState storage state = modulePauseStates[moduleId];
-        
+
         state.isPaused = true;
         state.pausedAt = block.timestamp;
         state.pausedBy = msg.sender;
@@ -191,12 +185,9 @@ contract EmergencyPauser is SecurityBase {
      * @param moduleId Module to unpause
      * @dev Initiates timelock delay before unpause can execute
      */
-    function scheduleUnpause(bytes32 moduleId) 
-        external 
-        onlyAuthority(AuthorityLevel.ADMIN) 
-    {
+    function scheduleUnpause(bytes32 moduleId) external onlyAuthority(AuthorityLevel.ADMIN) {
         PauseState storage state = modulePauseStates[moduleId];
-        
+
         if (!state.isPaused) revert EmergencyPauser__ModuleNotPaused();
         if (!state.canUnpause) revert EmergencyPauser__CannotUnpause();
 
@@ -211,19 +202,16 @@ contract EmergencyPauser is SecurityBase {
      * @param moduleId Module to unpause
      * @dev Can only execute after timelock delay
      */
-    function executeUnpause(bytes32 moduleId) 
-        external 
-        onlyAuthority(AuthorityLevel.ADMIN) 
-    {
+    function executeUnpause(bytes32 moduleId) external onlyAuthority(AuthorityLevel.ADMIN) {
         uint256 executeAt = scheduledUnpauses[moduleId];
-        
+
         if (executeAt == 0 || block.timestamp < executeAt) {
             revert EmergencyPauser__TimelockNotElapsed();
         }
 
         PauseState storage state = modulePauseStates[moduleId];
         state.isPaused = false;
-        
+
         delete scheduledUnpauses[moduleId];
 
         emit ModuleUnpaused(moduleId, msg.sender);
@@ -234,14 +222,11 @@ contract EmergencyPauser is SecurityBase {
      * @param moduleId Module to unpause
      * @dev Only callable by multisig in extreme emergencies
      */
-    function emergencyUnpause(bytes32 moduleId) 
-        external 
-        onlyAuthority(AuthorityLevel.MULTISIG) 
-    {
+    function emergencyUnpause(bytes32 moduleId) external onlyAuthority(AuthorityLevel.MULTISIG) {
         PauseState storage state = modulePauseStates[moduleId];
-        
+
         if (!state.canUnpause) revert EmergencyPauser__CannotUnpause();
-        
+
         state.isPaused = false;
         delete scheduledUnpauses[moduleId];
 
@@ -257,10 +242,7 @@ contract EmergencyPauser is SecurityBase {
      * @param account Address to grant authority
      * @param level Authority level to grant
      */
-    function grantAuthority(address account, AuthorityLevel level) 
-        external 
-        onlyAuthority(AuthorityLevel.MULTISIG) 
-    {
+    function grantAuthority(address account, AuthorityLevel level) external onlyAuthority(AuthorityLevel.MULTISIG) {
         authorities[account] = level;
         emit AuthorityGranted(account, level);
     }
@@ -269,10 +251,7 @@ contract EmergencyPauser is SecurityBase {
      * @notice Revoke authority from address
      * @param account Address to revoke
      */
-    function revokeAuthority(address account) 
-        external 
-        onlyAuthority(AuthorityLevel.MULTISIG) 
-    {
+    function revokeAuthority(address account) external onlyAuthority(AuthorityLevel.MULTISIG) {
         authorities[account] = AuthorityLevel.NONE;
         emit AuthorityRevoked(account);
     }
@@ -281,10 +260,7 @@ contract EmergencyPauser is SecurityBase {
      * @notice Update unpause delay
      * @param newDelay New delay in seconds
      */
-    function setUnpauseDelay(uint256 newDelay) 
-        external 
-        onlyAuthority(AuthorityLevel.MULTISIG) 
-    {
+    function setUnpauseDelay(uint256 newDelay) external onlyAuthority(AuthorityLevel.MULTISIG) {
         unpauseDelay = newDelay;
     }
 
