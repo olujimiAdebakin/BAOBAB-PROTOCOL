@@ -230,7 +230,8 @@ protocol-contracts/
 │   │   │   │   ├── CrossMarginEngine.sol         # Cross-margin perpetuals
 │   │   │   │   ├── PerpEngine.sol                # Perpetual futures engine
 │   │   │   │   ├── SpotEngine.sol                # Spot trading engine
-│   │   │   │   └── OrderBook.sol                 # CLOB limit order matching
+│   │   │   │   └── OrderBook.sol # CLOB limit order matching
+                 |   AutoDeleverageEngine.sol                
 │   │   │   ├── FundingRateCalculator.sol         # Perp funding rate logic
 │   │   │   ├── LiquidationEngine.sol             # Position liquidation
 │   │   │   ├── OrderManager.sol                  # Order lifecycle management
