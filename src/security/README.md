@@ -17,7 +17,7 @@ A comprehensive suite of modular, smart-contract-based security tools designed t
 | :--- | :--- |
 | **[Solidity](https://docs.soliditylang.org/)** | The core language for implementing the smart contract security logic on the Ethereum Virtual Machine (EVM). |
 | **[OpenZeppelin Contracts](https://www.openzeppelin.com/contracts)** | Used for standard and secure interfaces like `IERC20` for token interactions. |
-| **[Hardhat](https://hardhat.org/)** | (Assumed) A professional Ethereum development environment for compiling, deploying, testing, and debugging. |
+<!-- | **[Hardhat](https://hardhat.org/)** | (Assumed) A professional Ethereum development environment for compiling, deploying, testing, and debugging. | -->
 
 ## 🚀 Getting Started
 
@@ -108,7 +108,7 @@ This project is licensed under the Business Source License 1.1 (BUSL-1.1).
 
 **Olujimi Adebakin**
 
-<!-- -   **LinkedIn**: [Your LinkedIn Username](https://linkedin.com/in/your-username) -->
+
 -   **Twitter**: [@YourTwitterHandle](https://twitter.com/your-handle)
 
 ---
