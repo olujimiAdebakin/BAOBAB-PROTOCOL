@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
+import {IERC165} from "../interfaces/IERC165.sol";
+
 /**
  * @title AddressUtils
  * @author BAOBAB Protocol
@@ -276,7 +278,7 @@ library AddressUtils {
      * @param addr Address to check
      * @return isZeroAddr True if address is zero
      */
-    function isZeroAssembly(address addr) internal pure returns (bool) {
+    function isZeroAssembly(address addr) internal pure returns (bool isZeroAddr) {
         assembly {
             isZeroAddr := iszero(addr)
         }
@@ -287,7 +289,7 @@ library AddressUtils {
      * @param addr Address to check
      * @return isContractAddr True if address is a contract
      */
-    function isContractAssembly(address addr) internal view returns (bool) {
+    function isContractAssembly(address addr) internal view returns (bool isContractAddr) {
         assembly {
             isContractAddr := gt(extcodesize(addr), 0)
         }
@@ -298,18 +300,21 @@ library AddressUtils {
      * @param addr Address to check
      * @return codeSize Size of contract code
      */
-    function getCodeSize(address addr) internal view returns (uint256) {
+    function getCodeSize(address addr) internal view returns (uint256 codeSize) {
         assembly {
             codeSize := extcodesize(addr)
         }
     }
+    
+
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // EIP-165 INTERFACE FOR ERC165 SUPPORT
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// @dev Interface for EIP-165 support check
-    interface IERC165 {
-        function supportsInterface(bytes4 interfaceId) external view returns (bool);
-    }
+    // /// @dev Interface for EIP-165 support check
+    // interface IERC165 {
+    //     function supportsInterface(bytes4 interfaceId) external view returns (bool);
+    // }
+
 }

@@ -15,14 +15,14 @@ import {CommonStructs} from "./CommonStructs.sol";
  */
 library BasketStructs{
 
-    using CommonStructs for CommonStructs.OrderType;
+    using CommonStructs for *;
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                       ENUMERATIONS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /**
      * @notice Type of basket product
-     * @dev ASSET_BASKET - Holds actual tokens (e.g., African Tech Index)
+     * @dev ASSET_BASKET - Holds actual tokens (e.g.ETF, Commodity, African Tech Index)
      * @dev ORDER_BASKET - Bundles pending OrderNFTs (e.g., Volatility Strategy Fund)
      */
     enum BasketType {

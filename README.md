@@ -208,14 +208,14 @@ Purpose-built for African and emerging markets with specialized infrastructure.
 - 🔄 Order book matching engine (90%)
 - 🔄 Perpetuals engine (80%)
 - 🔄 LP Vault and lending pool (75%)
-- 🔄 Keeper bot implementation (60%)
-- 🔄 Frontend interface (50%)
+- 🔄 Keeper bot implementation (10%)
+- 🔄 Frontend interface (10%)
 
 **Timeline:**
-- **Q2 2025**: Testnet launch (Arbitrum Sepolia)
-- **Q3 2025**: External audit + Mainnet launch
-- **Q4 2025**: African asset integration
-- **2026**: Multi-chain expansion + governance activation
+- **Q3 2026**: Testnet launch (Arbitrum Sepolia)
+- **Q3 2026**: External audit + Mainnet launch
+- **Q4 2026**: African asset integration
+- **2027**: Multi-chain expansion + governance activation
 
 ---
 
