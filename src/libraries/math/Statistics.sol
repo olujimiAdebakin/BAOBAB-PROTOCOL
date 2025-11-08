@@ -114,8 +114,8 @@ library Statistics {
             sumSquaredDiffs += diff * diff;
         }
         
-        uint256 variance = sumSquaredDiffs / values.length;
-        stdDev = variance.sqrt();
+        uint256 varianced = sumSquaredDiffs / values.length;
+        stdDev = varianced.sqrt();
     }
 
     /**
@@ -172,7 +172,7 @@ library Statistics {
     /**
      * @notice Generate comprehensive statistical summary
      * @param values Array of numerical values
-     * @return summary Statistical summary containing all key metrics
+     * @return summary_ Statistical summary containing all key metrics
      */
     function summary(uint256[] memory values) internal pure returns (Summary memory summary_) {
         if (values.length == 0) revert InsufficientData();
@@ -200,17 +200,17 @@ library Statistics {
      * @notice Calculate correlation coefficient between two series
      * @param x First data series
      * @param y Second data series
-     * @return correlation Correlation coefficient in Q64.96 format (-1.0 to 1.0)
+     * @return correlationValue Correlation coefficient in Q64.96 format (-1.0 to 1.0)
      * @dev Pearson correlation coefficient
      */
-    function correlation(uint256[] memory x, uint256[] memory y) internal pure returns (int256) {
+    function correlation(uint256[] memory x, uint256[] memory y) internal pure returns (int256 correlationValue) {
         if (x.length != y.length) revert ArrayLengthMismatch();
         if (x.length < 2) revert InsufficientData();
         
         uint256 meanX = mean(x);
         uint256 meanY = mean(y);
         
-        int256 covariance = 0;
+        int256 covValue = 0;
         uint256 varianceX = 0;
         uint256 varianceY = 0;
         
@@ -218,7 +218,7 @@ library Statistics {
             int256 diffX = int256(x[i]) - int256(meanX);
             int256 diffY = int256(y[i]) - int256(meanY);
             
-            covariance += diffX * diffY;
+            covValue += diffX * diffY;
             varianceX += uint256(diffX * diffX);
             varianceY += uint256(diffY * diffY);
         }
@@ -226,7 +226,7 @@ library Statistics {
         if (varianceX == 0 || varianceY == 0) return 0;
         
         uint256 denominator = (varianceX.sqrt()).mul(varianceY.sqrt());
-        return (covariance * int256(FixedPointMath.Q96)) / int256(denominator);
+        correlationValue = (covValue * int256(FixedPointMath.Q96)) / int256(denominator);
     }
 
     /**
@@ -235,7 +235,7 @@ library Statistics {
      * @param y Second data series
      * @return covarianceValue Covariance between x and y
      */
-    function covariance(uint256[] memory x, uint256[] memory y) internal pure returns (int256) {
+    function covariance(uint256[] memory x, uint256[] memory y) internal pure returns (int256 covarianceValue) {
         if (x.length != y.length) revert ArrayLengthMismatch();
         if (x.length < 2) revert InsufficientData();
         
@@ -247,22 +247,22 @@ library Statistics {
             sum += (int256(x[i]) - int256(meanX)) * (int256(y[i]) - int256(meanY));
         }
         
-        return sum / int256(x.length);
+        covarianceValue = sum / int256(x.length);
     }
 
     /**
      * @notice Calculate beta coefficient (asset sensitivity to market)
      * @param assetReturns Asset returns series
      * @param marketReturns Market returns series
-     * @return beta Beta coefficient in Q64.96 format
+     * @return betaValue Beta coefficient in Q64.96 format
      */
-    function beta(uint256[] memory assetReturns, uint256[] memory marketReturns) internal pure returns (int256) {
+    function beta(uint256[] memory assetReturns, uint256[] memory marketReturns) internal pure returns (int256 betaValue) {
         int256 cov = covariance(assetReturns, marketReturns);
         uint256 marketVariance = variance(marketReturns);
         
         if (marketVariance == 0) return 0;
         
-        return (cov * int256(FixedPointMath.Q96)) / int256(marketVariance);
+        betaValue = (cov * int256(FixedPointMath.Q96)) / int256(marketVariance);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -271,12 +271,12 @@ library Statistics {
 
     /**
      * @notice Calculate Value at Risk (VaR) at given confidence level
-     * @param returns Array of returns (as percentages in basis points)
+     * @param returns_ Array of returns (as percentages in basis points)
      * @param confidence Confidence level in basis points (e.g., 9500 for 95%)
      * @return varValue Value at Risk in basis points (negative indicates loss)
      * @dev Historical simulation method
      */
-    function valueAtRisk(int256[] memory returns_, uint256 confidence) internal pure returns (int256) {
+    function valueAtRisk(int256[] memory returns_, uint256 confidence) internal pure returns (int256 varValue) {
         if (returns_.length == 0) revert InsufficientData();
         if (confidence > PercentageMath.ONE_HUNDRED_PERCENT) revert InvalidInput();
         
@@ -287,42 +287,42 @@ library Statistics {
         uint256 index = (sortedReturns.length * (PercentageMath.ONE_HUNDRED_PERCENT - confidence)) / PercentageMath.PERCENTAGE_FACTOR;
         index = index >= sortedReturns.length ? sortedReturns.length - 1 : index;
         
-        return -sortedReturns[index];
+        varValue = -sortedReturns[index];
     }
 
     /**
      * @notice Calculate Conditional Value at Risk (CVaR)
-     * @param returns Array of returns (as percentages in basis points)
+     * @param returns_ Array of returns (as percentages in basis points)
      * @param confidence Confidence level in basis points
      * @return cvarValue Conditional VaR in basis points
      * @dev Average of losses beyond VaR
      */
-    function conditionalValueAtRisk(int256[] memory returns_, uint256 confidence) internal pure returns (int256) {
+    function conditionalValueAtRisk(int256[] memory returns_, uint256 confidence) internal pure returns (int256 cvarValue) {
         if (returns_.length == 0) revert InsufficientData();
         
-        int256 varValue = valueAtRisk(returns_, confidence); // FIXED: Changed 'var' to 'varValue'
+        int256 varValue = valueAtRisk(returns_, confidence);
         
         // Calculate average of returns worse than VaR
         int256 sum = 0;
         uint256 count = 0;
         
         for (uint256 i = 0; i < returns_.length; i++) {
-            if (returns_[i] < -varValue) { // FIXED: Changed 'var' to 'varValue'
+            if (returns_[i] < -varValue) {
                 sum += returns_[i];
                 count++;
             }
         }
         
-        if (count == 0) return varValue; // FIXED: Changed 'var' to 'varValue'
-        return -sum / int256(count);
+        if (count == 0) return varValue;
+        cvarValue = -sum / int256(count);
     }
 
     /**
      * @notice Calculate maximum drawdown
      * @param values Array of portfolio values over time
-     * @return maxDrawdown Maximum drawdown in basis points
+     * @return maxDrawdownValue Maximum drawdown in basis points
      */
-    function maxDrawdown(uint256[] memory values) internal pure returns (uint256) {
+    function maxDrawdown(uint256[] memory values) internal pure returns (uint256 maxDrawdownValue) {
         if (values.length < 2) revert InsufficientData();
         
         uint256 peak = values[0];
@@ -339,16 +339,16 @@ library Statistics {
             }
         }
         
-        return maxDD;
+        maxDrawdownValue = maxDD;
     }
 
     /**
      * @notice Calculate Sharpe ratio
-     * @param returns Array of returns (as percentages in basis points)
+     * @param returns_ Array of returns (as percentages in basis points)
      * @param riskFreeRate Risk-free rate in basis points
      * @return sharpeRatioValue Sharpe ratio in Q64.96 format
      */
-    function sharpeRatio(int256[] memory returns_, uint256 riskFreeRate) internal pure returns (int256) {
+    function sharpeRatio(int256[] memory returns_, uint256 riskFreeRate) internal pure returns (int256 sharpeRatioValue) {
         if (returns_.length < 2) revert InsufficientData();
         
         // Convert returns to uint256 for calculations
@@ -366,16 +366,16 @@ library Statistics {
         if (stdDev == 0) return type(int256).max;
         
         int256 excessReturn = avgReturn - int256(riskFreeRate);
-        return (excessReturn * int256(FixedPointMath.Q96)) / int256(stdDev);
+        sharpeRatioValue = (excessReturn * int256(FixedPointMath.Q96)) / int256(stdDev);
     }
 
     /**
      * @notice Calculate Sortino ratio (only considers downside deviation)
-     * @param returns Array of returns (as percentages in basis points)
+     * @param returns_ Array of returns (as percentages in basis points)
      * @param riskFreeRate Risk-free rate in basis points
      * @return sortinoRatioValue Sortino ratio in Q64.96 format
      */
-    function sortinoRatio(int256[] memory returns_, uint256 riskFreeRate) internal pure returns (int256) {
+    function sortinoRatio(int256[] memory returns_, uint256 riskFreeRate) internal pure returns (int256 sortinoRatioValue) {
         if (returns_.length < 2) revert InsufficientData();
         
         int256 sum = 0;
@@ -400,20 +400,20 @@ library Statistics {
         if (downsideStdDev == 0) return type(int256).max;
         
         int256 excessReturn = avgReturn - int256(riskFreeRate);
-        return (excessReturn * int256(FixedPointMath.Q96)) / int256(downsideStdDev);
+        sortinoRatioValue = (excessReturn * int256(FixedPointMath.Q96)) / int256(downsideStdDev);
     }
 
     /**
      * @notice Calculate volatility (annualized standard deviation)
-     * @param returns Array of returns (as percentages in basis points)
+     * @param returns_ Array of returns (as percentages in basis points)
      * @param periodsPerYear Number of periods per year for annualization
      * @return volatilityValue Annualized volatility in basis points
      */
-    function volatility(uint256[] memory returns_, uint256 periodsPerYear) internal pure returns (uint256) {
+    function volatility(uint256[] memory returns_, uint256 periodsPerYear) internal pure returns (uint256 volatilityValue) {
         if (returns_.length < 2) revert InsufficientData();
         
         uint256 stdDev = standardDeviation(returns_);
-        return stdDev * (periodsPerYear.sqrt());
+        volatilityValue = stdDev * (periodsPerYear.sqrt());
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════

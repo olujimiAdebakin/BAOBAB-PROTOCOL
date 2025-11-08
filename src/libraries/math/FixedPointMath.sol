@@ -202,7 +202,7 @@ library FixedPointMath {
      * @return result e^x in Q64.96 format
      * @dev 10-term Taylor series approximation for reasonable precision
      */
-    function exp(uint256 x) internal pure returns (uint256 result) {
+    function expo(uint256 x) internal pure returns (uint256 result) {
         if (x == 0) return fromUint(1);
 
         result = fromUint(1);

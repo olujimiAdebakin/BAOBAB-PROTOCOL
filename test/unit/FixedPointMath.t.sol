@@ -175,8 +175,14 @@ contract FixedPointMathTest is Test {
         uint256 result = x.pow(y);
         uint256 expected = FixedPointMath.fromUint(1);
         
-        console.log("Zero Exponent Test: %s ^ %s = %s", x, y, result);
-        console.log("Expected: %s", expected);
+        // console.log("Zero Exponent Test: %s ^ %s = %s", x, y, result);
+        // console.log("Expected: %s", expected);
+
+            console.log("Zero Exponent Test:");
+    console.log("  Base (x): %s", x);
+    console.log("  Exponent (y): %s", y);
+    console.log("  Result: %s", result);
+    console.log("  Expected: %s", expected);
         
         assertEq(result, expected, "x^0 should equal 1 for any x");
     }
@@ -186,7 +192,7 @@ contract FixedPointMathTest is Test {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     function test_Exponential_Zero() public pure {
-        uint256 result = FixedPointMath.fromUint(0).exp();
+        uint256 result = FixedPointMath.fromUint(0).expo();
         uint256 expected = FixedPointMath.fromUint(1);
         
         console.log("Exponential Zero Test: exp(0) = %s", result);
@@ -197,7 +203,7 @@ contract FixedPointMathTest is Test {
 
     function test_Exponential_One() public pure {
         uint256 x = FixedPointMath.fromUint(1);
-        uint256 result = x.exp();
+        uint256 result = x.expo();
         
         // e ≈ 2.71828, allow small approximation error
         uint256 expected = 271828 * (Q96 / 100000); // 2.71828

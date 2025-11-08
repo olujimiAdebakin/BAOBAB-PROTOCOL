@@ -276,7 +276,7 @@ library SortUtils {
      * @param descending Whether to get largest (true) or smallest (false)
      * @return topK Array of top k elements
      */
-    function topK(
+    function topKs(
         uint256[] memory arr,
         uint256 k,
         bool descending
@@ -582,8 +582,8 @@ library SortUtils {
         uint256[] memory leftArr = new uint256[](n1);
         uint256[] memory rightArr = new uint256[](n2);
         
-        for (uint256 i = 0; i < n1; i++) leftArr[i] = arr[left + i];
-        for (uint256 j = 0; j < n2; j++) rightArr[j] = arr[mid + 1 + j];
+        for (uint256 i1 = 0; i1 < n1; i1++) leftArr[i1] = arr[left + i1];
+        for (uint256 j1 = 0; j1 < n2; j1++) rightArr[j1] = arr[mid + 1 + j1];
         
         uint256 i = 0;
         uint256 j = 0;

@@ -396,7 +396,7 @@ library ArrayUtils {
      * @param b Second array
      * @return intersection Array of common elements
      */
-    function intersection(
+    function intersections(
         uint256[] memory a,
         uint256[] memory b
     ) internal pure returns (uint256[] memory intersection) {
@@ -435,7 +435,7 @@ library ArrayUtils {
      * @param b Second array
      * @return difference Elements in a but not in b
      */
-    function difference(
+    function differences(
         uint256[] memory a,
         uint256[] memory b
     ) internal pure returns (uint256[] memory difference) {
