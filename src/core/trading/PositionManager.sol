@@ -488,7 +488,7 @@ contract PositionManager is SecurityBase {
      * @param side Position side
      * @param entryPrice Entry price
      * @param collateral Collateral amount
-     * @param size Position size
+     * @param positionSize Position size
      * @param leverage Leverage
      * @return liquidationPrice Price at which position gets liquidated
      */
@@ -496,22 +496,22 @@ contract PositionManager is SecurityBase {
         CommonStructs.Side side,
         uint256 entryPrice,
         uint256 collateral,
-        uint256 size,
+        uint256 positionSize,
         uint16 leverage
     ) internal pure returns (uint256 liquidationPrice) {
         // Maintenance margin = 5% (500 bps)
-        uint256 maintenanceMargin = (size * entryPrice * 500) / 10000;
+        uint256 maintenanceMargin = (positionSize * entryPrice * 500) / 10000;
 
         if (side == CommonStructs.Side.LONG) {
             // Long liquidation: entryPrice - (collateral - maintenanceMargin) / size
             if (collateral <= maintenanceMargin) return 0;
             uint256 buffer = collateral - maintenanceMargin;
-            liquidationPrice = entryPrice - ((buffer * 1e18) / size);
+            liquidationPrice = entryPrice - ((buffer * 1e18) / positionSize);
         } else {
             // Short liquidation: entryPrice + (collateral - maintenanceMargin) / size
             if (collateral <= maintenanceMargin) return type(uint256).max;
             uint256 buffer = collateral - maintenanceMargin;
-            liquidationPrice = entryPrice + ((buffer * 1e18) / size);
+            liquidationPrice = entryPrice + ((buffer * 1e18) / positionSize);
         }
     }
 
