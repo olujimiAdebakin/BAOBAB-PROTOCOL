@@ -210,7 +210,7 @@ library BaobabTimeUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     // NOTE: These functions require MarketRegistry integration
-    // Uncomment and implement when MarketRegistry is available
+    // To be uncommented and implemented when MarketRegistry is available
 
     /*
     /**
