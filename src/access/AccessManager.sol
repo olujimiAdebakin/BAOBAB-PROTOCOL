@@ -64,12 +64,12 @@ contract AccessManager is SecurityBase {
 
     constructor(address _owner) {
         if (_owner == address(0)) revert AccessManager__InvalidAddress();
-        
+
         owner = _owner;
-        
+
         // Grant owner the OWNER_ROLE
         _grantRole(RoleRegistry.OWNER_ROLE, _owner);
-        
+
         // Set OWNER_ROLE as admin of all roles
         _setRoleAdmin(RoleRegistry.OWNER_ROLE, RoleRegistry.OWNER_ROLE);
         _setRoleAdmin(RoleRegistry.ADMIN_ROLE, RoleRegistry.OWNER_ROLE);
@@ -151,12 +151,9 @@ contract AccessManager is SecurityBase {
      * @param roles Array of roles to grant
      * @param accounts Array of accounts receiving roles
      */
-    function batchGrantRoles(
-        bytes32[] calldata roles,
-        address[] calldata accounts
-    ) external {
+    function batchGrantRoles(bytes32[] calldata roles, address[] calldata accounts) external {
         require(roles.length == accounts.length, "Length mismatch");
-        
+
         for (uint256 i = 0; i < roles.length; i++) {
             if (!hasRole(_roleAdmins[roles[i]], msg.sender)) {
                 revert AccessManager__UnauthorizedRoleAdmin();
@@ -170,12 +167,9 @@ contract AccessManager is SecurityBase {
      * @param roles Array of roles to revoke
      * @param accounts Array of accounts losing roles
      */
-    function batchRevokeRoles(
-        bytes32[] calldata roles,
-        address[] calldata accounts
-    ) external {
+    function batchRevokeRoles(bytes32[] calldata roles, address[] calldata accounts) external {
         require(roles.length == accounts.length, "Length mismatch");
-        
+
         for (uint256 i = 0; i < roles.length; i++) {
             if (!hasRole(_roleAdmins[roles[i]], msg.sender)) {
                 revert AccessManager__UnauthorizedRoleAdmin();
@@ -208,7 +202,7 @@ contract AccessManager is SecurityBase {
      */
     function acceptOwnership() external {
         if (msg.sender != pendingOwner) revert AccessManager__OnlyOwner();
-        
+
         address oldOwner = owner;
         owner = pendingOwner;
         pendingOwner = address(0);
@@ -231,7 +225,7 @@ contract AccessManager is SecurityBase {
      */
     function _grantRole(bytes32 role, address account) internal {
         if (_roles[role][account]) revert AccessManager__AlreadyHasRole();
-        
+
         _roles[role][account] = true;
         _accountRoles[account].push(role);
         _roleMembers[role].push(account);
@@ -246,9 +240,9 @@ contract AccessManager is SecurityBase {
      */
     function _revokeRole(bytes32 role, address account) internal {
         if (!_roles[role][account]) return;
-        
+
         _roles[role][account] = false;
-        
+
         // Remove from account roles
         bytes32[] storage accountRoles = _accountRoles[account];
         for (uint256 i = 0; i < accountRoles.length; i++) {

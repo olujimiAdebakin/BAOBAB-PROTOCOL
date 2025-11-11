@@ -5,11 +5,29 @@ pragma solidity ^0.8.24;
  * @title RoleRegistry
  * @author BAOBAB Protocol
  * @notice Defines all protocol roles and their permissions
- * @dev Uses keccak256 hashes for role identifiers (OpenZeppelin pattern)
+ * @dev Uses bytes32 role identifiers for gas efficiency
  *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
- *                                       ROLE REGISTRY
+ *                                       ROLE HIERARCHY
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * OWNER_ROLE (Root)
+ * ├── ADMIN_ROLE (Protocol Operations)
+ * │   ├── KEEPER_ROLE (Automation)
+ * │   ├── LIQUIDATOR_ROLE (Risk Management)
+ * │   ├── ORACLE_UPDATER_ROLE (Price Feeds)
+ * │   ├── MARKET_MAKER_ROLE (Liquidity)
+ * │   ├── FEE_MANAGER_ROLE (Revenue)
+ * │   ├── BASKET_MANAGER_ROLE (Strategy Baskets)
+ * │   ├── EVENT_SETTLER_ROLE (Prediction Markets)
+ * │   ├── TRADING_OPERATOR_ROLE (Exchange Operations)
+ * │   ├── VAULT_OPERATOR_ROLE (Fund Management)
+ * │   └── RISK_MANAGER_ROLE (Parameter Updates)
+ * │
+ * └── GUARDIAN_ROLE (Security)
+ *     └── PAUSER_ROLE (Emergency Controls)
+ *
+ * UPGRADER_ROLE (Infrastructure) ← Owned by OWNER_ROLE
  */
 library RoleRegistry {
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -135,7 +153,7 @@ library RoleRegistry {
         if (role == TRADING_OPERATOR_ROLE) return "Trading Operator - Trading Parameters";
         if (role == VAULT_OPERATOR_ROLE) return "Vault Operator - Vault Management";
         if (role == RISK_MANAGER_ROLE) return "Risk Manager - Risk Parameters";
-        
+
         return "Unknown Role";
     }
 
@@ -145,7 +163,7 @@ library RoleRegistry {
      * @return level Authority level (0-100)
      */
     function getRoleAuthorityLevel(bytes32 role) internal pure returns (uint8 level) {
-        if (role == OWNER_ROLE) return 100;           // Highest authority
+        if (role == OWNER_ROLE) return 100; // Highest authority
         if (role == ADMIN_ROLE) return 80;
         if (role == GUARDIAN_ROLE) return 70;
         if (role == UPGRADER_ROLE) return 60;
@@ -159,8 +177,8 @@ library RoleRegistry {
         if (role == PAUSER_ROLE) return 25;
         if (role == ORACLE_UPDATER_ROLE) return 20;
         if (role == KEEPER_ROLE) return 15;
-        if (role == LIQUIDATOR_ROLE) return 10;       // Lowest authority
-        
+        if (role == LIQUIDATOR_ROLE) return 10; // Lowest authority
+
         return 0; // Unknown role
     }
 
@@ -173,7 +191,7 @@ library RoleRegistry {
     function canGrantRole(bytes32 grantor, bytes32 grantee) internal pure returns (bool) {
         // Only OWNER can grant OWNER role
         if (grantee == OWNER_ROLE) return grantor == OWNER_ROLE;
-        
+
         // Higher authority can grant lower authority roles
         return getRoleAuthorityLevel(grantor) > getRoleAuthorityLevel(grantee);
     }

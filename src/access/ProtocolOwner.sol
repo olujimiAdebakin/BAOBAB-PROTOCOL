@@ -61,14 +61,11 @@ contract ProtocolOwner {
     //                                         CONSTRUCTOR
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    constructor(
-        address _accessManager,
-        address _treasury,
-        address _insuranceVault,
-        address _feeRecipient
-    ) {
-        if (_accessManager == address(0) || _treasury == address(0) || 
-            _insuranceVault == address(0) || _feeRecipient == address(0)) {
+    constructor(address _accessManager, address _treasury, address _insuranceVault, address _feeRecipient) {
+        if (
+            _accessManager == address(0) || _treasury == address(0) || _insuranceVault == address(0)
+                || _feeRecipient == address(0)
+        ) {
             revert ProtocolOwner__InvalidAddress();
         }
 
@@ -104,10 +101,10 @@ contract ProtocolOwner {
      */
     function setTreasury(address newTreasury) external onlyOwner {
         if (newTreasury == address(0)) revert ProtocolOwner__InvalidAddress();
-        
+
         address oldTreasury = treasury;
         treasury = newTreasury;
-        
+
         emit TreasuryUpdated(oldTreasury, newTreasury);
     }
 
@@ -117,10 +114,10 @@ contract ProtocolOwner {
      */
     function setInsuranceVault(address newVault) external onlyOwner {
         if (newVault == address(0)) revert ProtocolOwner__InvalidAddress();
-        
+
         address oldVault = insuranceVault;
         insuranceVault = newVault;
-        
+
         emit InsuranceVaultUpdated(oldVault, newVault);
     }
 
@@ -130,10 +127,10 @@ contract ProtocolOwner {
      */
     function setFeeRecipient(address newRecipient) external onlyOwner {
         if (newRecipient == address(0)) revert ProtocolOwner__InvalidAddress();
-        
+
         address oldRecipient = feeRecipient;
         feeRecipient = newRecipient;
-        
+
         emit FeeRecipientUpdated(oldRecipient, newRecipient);
     }
 
@@ -178,20 +175,14 @@ contract ProtocolOwner {
      * @param amount Amount to recover
      * @dev Only owner, requires emergency withdrawal enabled
      */
-    function recoverFunds(
-        address token,
-        address to,
-        uint256 amount
-    ) external onlyOwner {
+    function recoverFunds(address token, address to, uint256 amount) external onlyOwner {
         if (!emergencyWithdrawalEnabled) {
             revert ProtocolOwner__EmergencyWithdrawalNotEnabled();
         }
         if (to == address(0)) revert ProtocolOwner__InvalidAddress();
 
         // Transfer tokens
-        (bool success, ) = token.call(
-            abi.encodeWithSignature("transfer(address,uint256)", to, amount)
-        );
+        (bool success,) = token.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
         require(success, "Transfer failed");
 
         emit EmergencyFundsRecovered(token, to, amount);
@@ -208,7 +199,7 @@ contract ProtocolOwner {
         }
         if (to == address(0)) revert ProtocolOwner__InvalidAddress();
 
-        (bool success, ) = to.call{value: amount}("");
+        (bool success,) = to.call{value: amount}("");
         require(success, "ETH transfer failed");
 
         emit EmergencyFundsRecovered(address(0), to, amount);
@@ -242,19 +233,17 @@ contract ProtocolOwner {
      * @return _paused Protocol pause state
      * @return _emergencyEnabled Emergency withdrawal state
      */
-    function getProtocolConfig() external view returns (
-        address _treasury,
-        address _insuranceVault,
-        address _feeRecipient,
-        bool _paused,
-        bool _emergencyEnabled
-    ) {
-        return (
-            treasury,
-            insuranceVault,
-            feeRecipient,
-            protocolPaused,
-            emergencyWithdrawalEnabled
-        );
+    function getProtocolConfig()
+        external
+        view
+        returns (
+            address _treasury,
+            address _insuranceVault,
+            address _feeRecipient,
+            bool _paused,
+            bool _emergencyEnabled
+        )
+    {
+        return (treasury, insuranceVault, feeRecipient, protocolPaused, emergencyWithdrawalEnabled);
     }
 }
