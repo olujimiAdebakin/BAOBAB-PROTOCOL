@@ -133,6 +133,22 @@ library CommonStructs {
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /**
+     * @notice Extended position data with ADL tracking
+     * @param position Core position data from CommonStructs
+     * @param lastUpdateTime Last time position was updated
+     * @param accumulatedFunding Cumulative funding payments
+     * @param isLiquidatable Whether position can be liquidated now
+     * @param inADLQueue Whether position is in ADL queue
+     */
+    struct PositionData {
+        CommonStructs.Position position;
+        uint256 lastUpdateTime;
+        int256 accumulatedFunding;
+        bool isLiquidatable;
+        bool inADLQueue;
+    }
+
+    /**
      * @notice User's open trading position
      * @param positionId Unique identifier for position
      * @param marketId Market where position exists

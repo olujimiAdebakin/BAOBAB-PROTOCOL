@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {CommonStructs} from "../../../libraries/structs/CommonStructs.sol";
 import {SecurityBase} from "../../../security/SecurityBase.sol";
+import {IPositionManager} from "../../../interfaces/IPositionManager.sol";
 
 /**
  * @title AutoDeleverageEngine
@@ -14,21 +15,41 @@ import {SecurityBase} from "../../../security/SecurityBase.sol";
  *                                  AUTO-DELEVERAGE ENGINE
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
  *
- * ADL MECHANISM:
- * 1. Liquidation occurs but can't fill (no buyers/sellers)
- * 2. Insurance fund insufficient to cover loss
- * 3. Protocol ranks profitable opposing positions by PnL + leverage
- * 4. Force-closes top positions until liquidation covered
- * 5. Deleveraged traders keep their profits
+ * ADL MECHANISM (Auto-Deleverage):
+ * 1. Liquidation triggered but cannot fill (no counterparty in orderbook/vault)
+ * 2. Insurance Fund balance < required cover → shortfall detected
+ * 3. System ranks profitable positions on the OPPOSITE side by ADL Score:
+ *    → ADL Score = (unrealizedPnL × leverage) / 100   (higher = deleveraged first)
+ * 4. Force-closes top-ranked positions until shortfall fully covered
+ * 5. Deleveraged traders realize & KEEP 100% of their profits (only future upside lost)
  *
- * EXAMPLE:
- * - Jimi LONG liquidated, needs $100k to close
- * - Insurance fund only has $20k
- * - Protocol ADLs Pelumi (SHORT, +$50k profit) and Carol (SHORT, +$30k profit)
- * - Jimis position closed, insurance fund saved
+ * NIGERIA FLASH-CRASH EXAMPLE:
+ * - Jimi opens 10x LONG BTC-PERP @ $60k
+ * - Price dumps to $30k → Jimi liquidated, needs $100k to close
+ * - Insurance Fund only has $20k → $80k shortfall
+ * - ADL scans all SHORT winners:
+ *   • Pelumi: +$50k profit @ 20x leverage → score = ($50k × 20) / 100 = 10,000
+ *   • Ada:    +$30k profit @ 15x leverage → score = ($30k × 15) / 100 =  4,500
+ *   • Chike:  +$10k profit @ 25x leverage → score = ($10k × 25) / 100 =  2,500
+ * - Protocol force-closes Pelumi fully + Ada partially
+ * - Jimi’s position closed at fair price
+ * - Pelumi keeps his full $50k profit, Ada keeps $30k
+ * - Insurance Fund loses only $20k → SAVED 🇳🇬
  *
+ * ON-CHAIN SCORE CALCULATION (Pelumi):
+ *   unrealizedPnL = 50_000 * 1e18          // $50k in 18 decimals
+ *   leverage      = 20                     // uint16
+ *   adlScore      = (50_000e18 × 20) / 100
+ *                 = 1_000_000e18 / 100
+ *                 = 10_000e18              // stored on-chain
+ *
+ * Frontend displays: "ADL Rank #1 · Score 10,000 · HIGH RISK"
+ *
+ * Hyperliquid/Bybit-grade protection. Built for African volatility. 🚀
  */
 contract AutoDeleverageEngine is SecurityBase {
+    IPositionManager public positionManager;
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                          STRUCTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -91,68 +112,210 @@ contract AutoDeleverageEngine is SecurityBase {
     //                                       STATE VARIABLES
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// @notice Per-market ADL configuration
+    /**
+     * @notice Per-market ADL configuration storage
+     * @dev Maps market identifier to its specific ADL parameters
+     * @dev Different markets can have different ADL thresholds and behaviors
+     * @dev Example: ETH market might have 80% insurance fund threshold, BTC 75%
+     * @dev Key: bytes32 marketId (e.g., keccak256("ETH-USD"))
+     * @dev Value: ADLConfig struct containing thresholds, limits, and flags
+     */
     mapping(bytes32 => ADLConfig) public adlConfigs;
 
-    /// @notice ADL queue: market => side => ranked candidates
+    /**
+     * @notice ADL candidate queue organized by market and side
+     * @dev Two-dimensional mapping: market → side → array of ADL candidates
+     * @dev Candidates are sorted by profitability (most profitable first)
+     * @dev LONG side queue: Profitable long positions that can be force-closed to cover short liquidation deficits
+     * @dev SHORT side queue: Profitable short positions that can be force-closed to cover long liquidation deficits
+     * @dev When ADL triggers, system dequeues from the opposite side of the liquidated position
+     */
     mapping(bytes32 => mapping(CommonStructs.Side => ADLCandidate[])) public adlQueues;
 
-    /// @notice Position to queue index mapping
+    /**
+     * @notice Reverse mapping from position ID to its index in the ADL queue
+     * @dev Enables O(1) lookup and removal from ADL queues
+     * @dev Without this, removing a position would require O(n) queue scanning
+     * @dev Key: bytes32 positionId (unique position identifier)
+     * @dev Value: uint256 index in the adlQueues[market][side] array
+     * @dev Special value: type(uint256).max indicates position is not in queue
+     */
     mapping(bytes32 => uint256) public queueIndices;
 
-    /// @notice ADL execution history
+    /**
+     * @notice Historical record of ADL executions for auditing and analysis
+     * @dev Stores complete execution details for each ADL event
+     * @dev Key: bytes32 adlId (unique ADL event identifier)
+     * @dev Value: ADLExecution struct containing:
+     *   - marketId, triggerPositionId, totalSizeClosed
+     *   - timestamp, executedPrice, insuranceShortfall
+     *   - array of deleveraged positions with their PnL
+     * @dev Used for post-mortem analysis, risk reporting, and user compensation
+     */
     mapping(bytes32 => ADLExecution) public adlExecutions;
 
-    /// @notice Total ADL events per market
+    /**
+     * @notice Counter of total ADL events per market for risk monitoring
+     * @dev Tracks how frequently ADL activates in each market
+     * @dev Key: bytes32 marketId
+     * @dev Value: uint256 count of ADL events (incremented on each ADL trigger)
+     * @dev High counts may indicate market instability or need for parameter adjustment
+     * @dev Used in risk dashboards and governance reporting
+     */
     mapping(bytes32 => uint256) public totalADLEvents;
 
-    /// @notice Authorized liquidation engine
+    /**
+     * @notice Authorized liquidation engine contract address
+     * @dev Only this contract can trigger ADL operations
+     * @dev LiquidationEngine determines when insurance fund is depleted and ADL is needed
+     * @dev Separation of concerns: LiquidationEngine handles normal liquidations, ADL handles extreme cases
+     * @dev Set during initialization and immutable thereafter for security
+     */
     address public liquidationEngine;
 
-    /// @notice Insurance vault address
+    /**
+     * @notice Insurance vault contract address
+     * @dev Protocol's insurance fund that covers liquidation shortfalls
+     * @dev ADL only triggers when insurance vault cannot fully cover a liquidation loss
+     * @dev Source of funds for partial compensation to deleveraged traders
+     * @dev May pay bonuses to traders whose positions are force-closed via ADL
+     */
     address public insuranceVault;
 
-    /// @notice Protocol admin
-    address public admin;
-
+    /**
+     * @notice Protocol administrator address with configuration privileges
+     * @dev Can update ADL parameters, enable/disable ADL per market
+     * @dev Typically a multi-sig or governance contract in production
+     * @dev Critical security role - controls emergency risk management parameters
+     * @dev In final implementation, this would use OpenZeppelin AccessControl
+     */
+    address public BaobabAdmin;
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                           EVENTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
+    /**
+     * @notice Emitted when Automatic Deleveraging (ADL) is triggered for a market
+     * @dev ADL occurs when insurance fund is depleted and profitable positions are force-closed to cover losses
+     * @param adlId Unique identifier for the ADL event
+     * @param marketId Market where ADL was triggered
+     * @param liquidatedPosition Position that triggered the ADL (the one being covered)
+     * @param totalSizeClosed Total position size closed across all deleveraged positions
+     */
     event ADLTriggered(
         bytes32 indexed adlId, bytes32 indexed marketId, bytes32 liquidatedPosition, uint256 totalSizeClosed
     );
 
+    /**
+     * @notice Emitted when a position is automatically deleveraged (force-closed)
+     * @dev This happens to profitable positions when insurance fund cannot cover liquidation losses
+     * @param positionId Unique identifier of the position being deleveraged
+     * @param trader Address of the position owner
+     * @param realizedPnL Profit/Loss realized from the forced closure (can be positive or negative)
+     * @param timestamp Block timestamp when deleveraging occurred
+     */
     event PositionDeleveraged(
         bytes32 indexed positionId, address indexed trader, uint256 realizedPnL, uint256 timestamp
     );
 
+    struct ForceCloseParams {
+        bytes32 positionId;
+        address trader;
+        uint256 size;
+        uint256 price;
+    }
+
+    /**
+     * @notice Emitted when ADL queue is updated for a market side
+     * @dev Tracks the queue of positions eligible for ADL (sorted by profitability)
+     * @param marketId Market identifier
+     * @param side LONG or SHORT side of the market
+     * @param queueLength Current number of positions in the ADL queue
+     */
     event ADLQueueUpdated(bytes32 indexed marketId, CommonStructs.Side side, uint256 queueLength);
 
+    /**
+     * @notice Emitted when internal ADL force-close occurs
+     * @dev Internal event for debugging and monitoring ADL execution
+     * @param positionId Unique identifier of the position being force-closed
+     * @param trader Address of the position owner
+     * @param size Size of the position being closed
+     * @param price Execution price used for the force-close
+     */
+    event InternalADLForceClose(bytes32 indexed positionId, address indexed trader, uint256 size, uint256 price);
+
+    /**
+     * @notice Emitted when ADL configuration is updated for a market
+     * @dev Includes changes to ADL thresholds, queue parameters, or activation conditions
+     * @param marketId Market identifier
+     */
     event ADLConfigUpdated(bytes32 indexed marketId);
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                           ERRORS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
+    /**
+     * @notice Reverts when caller is not the authorized LiquidationEngine
+     * @dev ADL operations should only be triggered by the liquidation system
+     * @dev This prevents unauthorized actors from triggering deleveraging
+     */
     error ADL__OnlyLiquidationEngine();
+
+    /**
+     * @notice Reverts when caller is not protocol admin
+     * @dev Configuration changes and emergency operations require admin privileges
+     * @dev Protects critical ADL parameters from unauthorized modification
+     */
     error ADL__OnlyAdmin();
+
+    /**
+     * @notice Reverts when Automatic Deleveraging is not enabled for the market
+     * @dev ADL must be explicitly enabled per-market via governance
+     * @dev Some markets may operate without ADL for specific risk profiles
+     */
     error ADL__ADLNotEnabled();
+
+    /**
+     * @notice Reverts when insufficient profitable positions available for ADL
+     * @dev ADL requires enough profitable positions to cover liquidation shortfall
+     * @dev If no profitable positions exist, protocol may need to use insurance fund
+     */
     error ADL__InsufficientCandidates();
+
+    /**
+     * @notice Reverts when ADL configuration parameters are invalid
+     * @dev Ensures ADL thresholds, limits, and ratios are within safe bounds
+     * @dev Prevents dangerous configurations that could harm protocol solvency
+     */
     error ADL__InvalidConfig();
+
+    /**
+     * @notice Reverts when general input parameters are invalid
+     * @dev Catch-all for malformed inputs, zero values, or out-of-bounds parameters
+     * @dev Provides safety against incorrect function calls
+     */
+    error InvalidInput();
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                         CONSTRUCTOR
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    constructor(address _admin, address _liquidationEngine, address _insuranceVault) {
-        if (_admin == address(0) || _liquidationEngine == address(0) || _insuranceVault == address(0)) {
+    constructor(address _admin, address _liquidationEngine, address _insuranceVault, address _positionManager) {
+        // Zero-address guard — prevents deployment with invalid core contracts
+        if (
+            _admin == address(0) || _liquidationEngine == address(0) || _insuranceVault == address(0)
+                || _positionManager == address(0)
+        ) {
             revert ADL__InvalidConfig();
         }
 
-        admin = _admin;
-        liquidationEngine = _liquidationEngine;
+        positionManager = IPositionManager(_positionManager);
+        if (_positionManager == address(0)) revert ADL__InvalidConfig();
+
+        BaobabAdmin = _admin;
         insuranceVault = _insuranceVault;
+        liquidationEngine = _liquidationEngine;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -165,7 +328,7 @@ contract AutoDeleverageEngine is SecurityBase {
     }
 
     modifier onlyAdmin() {
-        if (msg.sender != admin) revert ADL__OnlyAdmin();
+        if (msg.sender != BaobabAdmin) revert ADL__OnlyAdmin();
         _;
     }
 
@@ -182,6 +345,23 @@ contract AutoDeleverageEngine is SecurityBase {
      * @param executionPrice Current market price (18 decimals)
      * @return success True if ADL completed successfully
      * @dev Only callable by LiquidationEngine when normal liquidation fails
+     */
+
+    /**
+     * @notice Executes the Auto-Deleveraging (ADL) process when a standard liquidation fails.
+     * @dev This function is called exclusively by the LiquidationEngine to reduce risk
+     *      by force-closing positions on the opposing side of the market until the
+     *      liquidated size is covered. It iterates through the ADL queue, force-closes
+     *      positions, updates records, and emits events for each deleveraged position.
+     *
+     * @param marketId The identifier of the market where the ADL is performed.
+     * @param liquidatedPosition The position ID that triggered the ADL event.
+     * @param side The side (LONG or SHORT) of the liquidated position. The function
+     *             deleverages positions on the opposite side.
+     * @param sizeToClose The total position size to be closed, in 18-decimal precision.
+     * @param executionPrice The current execution price used to close positions, in 18-decimals.
+     *
+     * @return success A boolean indicating whether the ADL fully covered the required size.
      */
     function executeADL(
         bytes32 marketId,
@@ -224,7 +404,13 @@ contract AutoDeleverageEngine is SecurityBase {
             }
 
             // Force-close position
-            _forceClosePosition(candidate.positionId, candidate.trader, closeSize, executionPrice);
+            ForceCloseParams memory params = ForceCloseParams({
+                positionId: candidate.positionId,
+                trader: candidate.trader,
+                size: closeSize,
+                price: executionPrice
+            });
+            _forceClosePosition(params);
 
             deleveragedPositions[deleveragedCount] = candidate.positionId;
             totalClosed += closeSize;
@@ -364,16 +550,26 @@ contract AutoDeleverageEngine is SecurityBase {
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * @notice Force-close a position (internal)
-     * @param positionId Position to close
-     * @param trader Position owner
-     * @param size Size to close
-     * @param price Execution price
-     * @dev Calls PositionManager to execute close
+     * @notice Internally force-closes a trader's position during the ADL process.
+     * @dev Invoked by the Auto-Deleverage (ADL) engine to close positions without user action.
+     *      This function emits an internal ADL event and delegates the actual close
+     *      execution to the PositionManager contract.
+     *
+     * @param params The parameters for force-closing a position:
+     *        - positionId: The unique identifier of the position to close.
+     *        - trader: The address of the position owner.
+     *        - size: The portion of the position to close (in 18-decimal precision).
+     *        - price: The execution price used to close the position (in 18-decimals).
      */
-    function _forceClosePosition(bytes32 positionId, address trader, uint256 size, uint256 price) internal {
-        // TODO: Call PositionManager.forceClosePosition()
-        // This would interact with your PositionManager contract
+    function _forceClosePosition(ForceCloseParams memory params) internal {
+        if (params.size == 0) revert InvalidInput();
+
+        emit InternalADLForceClose(params.positionId, params.trader, params.size, params.price);
+        IPositionManager(positionManager).forceClosePosition(
+            params.positionId,
+            params.price,
+            false // Not a liquidation, it's ADL
+        );
     }
 
     /**
@@ -381,9 +577,8 @@ contract AutoDeleverageEngine is SecurityBase {
      * @param positionId Position identifier
      * @return size Position size
      */
-    function _getPositionSize(bytes32 positionId) internal pure returns (uint256 size) {
-        // TODO: Call PositionManager.getPositionSize()
-        return 0; // Placeholder
+    function _getPositionSize(bytes32 positionId) internal view returns (uint256 size) {
+        return IPositionManager(positionManager).getPositionSize(positionId);
     }
 
     /**

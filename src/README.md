@@ -1,143 +1,126 @@
-# BAOBAB Protocol 🌳
+# BAOBAB Protocol: A High-Performance Perpetual DEX 📈
 
-BAOBAB is a high-performance, modular framework for building a decentralized perpetuals and derivatives exchange on EVM-compatible blockchains. Designed with a first-principles approach, the protocol prioritizes security, gas efficiency, and advanced trading features, including tokenized asset baskets and sophisticated order types.
-
-The architecture is built upon a robust foundation of custom-developed, gas-optimized libraries for fixed-point math, statistical analysis, and complex data structures, ensuring precision and reliability for demanding DeFi applications.
+BAOBAB is a sophisticated, high-performance decentralized perpetuals exchange built with Solidity. It features a robust, modular architecture designed for security, efficiency, and scalability, incorporating advanced mechanisms like an Auto-Deleveraging (ADL) engine, tokenized asset baskets, and comprehensive risk management systems.
 
 ## ✨ Features
 
--   **Modular Trading Engines**: A clear separation of concerns allows for distinct engines for Perpetual Swaps, Spot Markets, and Cross-Margin accounts.
--   **Tokenized Baskets**: Create and manage tokenized baskets of underlying assets (`AssetBasket`) or pending trading strategies (`OrderBasket`), enabling novel index and fund products.
--   **Advanced Order Types**: The protocol is designed to support complex order executions like Time-Weighted Average Price (TWAP) and Scale orders, in addition to standard Market and Limit orders.
--   **On-Chain Governance**: A comprehensive governance module featuring a native token (`BAOBABToken`), `Governor`, and `TimelockController` for decentralized protocol management.
--   **Robust Security Framework**: Includes essential security modules like a `CircuitBreaker`, `EmergencyPauser`, and `RateLimiter` to protect the protocol and its users.
--   **Gas-Optimized Core Libraries**: A suite of powerful, custom-built libraries for high-precision math, sorting algorithms, and statistical calculations forms the bedrock of the protocol.
-
-## 🏛️ System Architecture
-
-The BAOBAB Protocol is designed with a layered and modular architecture to ensure scalability, security, and maintainability.
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                      Routers (User Facing)               │
-│ (CoreRouter, TradingRouter, VaultRouter, BasketRouter)   │
-└────────────────────┬──────────────────┬──────────────────┘
-                     │                  │
-┌────────────────────▼──────────────────▼──────────────────┐
-│                   Core Protocol Logic                    │
-│ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ │
-│ │  Trading       │ │  Baskets       │ │  Vaults        │ │
-│ │ (PerpEngine,   │ │ (BasketEngine, │ │ (Liquidity,   │ │
-│ │  OrderBook)    │ │  Rebalancing)  │ │  Insurance)    │ │
-│ └────────────────┘ └────────────────┘ └────────────────┘ │
-└────────────────────┬──────────────────┬──────────────────┘
-                     │                  │
-┌────────────────────▼──────────────────▼──────────────────┐
-│                 Foundational Libraries & Models          │
-│ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ │
-│ │  Math          │ │  Data          │ │  Security      │ │
-│ │ (FixedPoint,   │ │  Structures    │ │ (Guards,       │ │
-│ │  Statistics)   │ │ (Arrays, Sort) │ │  CircuitBreaker) │ │
-│ └────────────────┘ └────────────────┘ └────────────────┘ │
-└──────────────────────────────────────────────────────────┘
-```
-
-## 📚 Core Libraries Showcase
-
-The heart of the BAOBAB Protocol lies in its powerful, gas-optimized foundational libraries. These libraries demonstrate a deep understanding of the mathematical and computational challenges in building a high-performance DEX.
-
--   **`FixedPointMath.sol`**: A high-precision math library using the Q64.96 format. It provides essential functions for multiplication, division, square root, and exponentiation, crucial for avoiding floating-point errors in financial calculations.
--   **`PercentageMath.sol`**: Handles all percentage-based calculations with basis points precision, essential for fees, interest rates, and risk parameters like liquidation margins.
--   **`Statistics.sol`**: An advanced library for on-chain statistical analysis, including mean, standard deviation, variance, correlation, and Value at Risk (VaR). This enables sophisticated risk management and analytics.
--   **`ArrayUtils.sol` & `SortUtils.sol`**: A comprehensive toolkit for efficient array manipulation and sorting. `SortUtils` includes multiple algorithms like QuickSort and MergeSort, with specialized functions for order book price-time priority matching.
--   **`TimeUtils.sol`**: Provides a robust set of time-related functions for managing funding rate schedules, order expirations, and market trading hours, with built-in support for major African market schedules.
+-   **Advanced Trading Engine**: Supports both perpetual and spot markets with a hybrid order book and vault-based execution model.
+-   **Granular Access Control**: A hierarchical, role-based access system (`AccessManager`, `RoleRegistry`) secures all protocol functions.
+-   **Comprehensive Security Suite**: Includes a `CircuitBreaker` for market volatility, an `EmergencyPauser` for system-wide halts, and a `RateLimiter` to prevent spam and DoS attacks.
+-   **Auto-Deleveraging (ADL)**: A sophisticated ADL engine protects the insurance fund during extreme market conditions by deleveraging profitable traders, a mechanism used by top-tier centralized exchanges.
+-   **Tokenized Baskets**: A flexible system (`BasketEngine`, `BasketFactory`) for creating and managing tokenized asset baskets and strategy funds, similar to on-chain ETFs.
+-   **Robust Position Management**: Manages complex perpetual positions, cross-margin, PnL calculations, and liquidations with high precision.
+-   **Custom Math Libraries**: Gas-optimized libraries for `FixedPointMath`, `PercentageMath`, and `Statistics` ensure high-precision calculations essential for financial applications.
 
 ## 🛠️ Technologies Used
 
-| Technology | Description |
-| :--- | :--- |
-| **Solidity** | Smart contract programming language for the Ethereum Virtual Machine (EVM). |
-| **Hardhat / Foundry** | Professional development environments for compiling, testing, and deploying smart contracts. |
-| **ERC20 / ERC721** | Standard interfaces for fungible and non-fungible tokens, used for governance tokens, basket shares, and OrderNFTs. |
-| **OpenZeppelin** | While not explicitly used in the custom libraries, its secure patterns influence the overall design for components like access control and governance. |
+| Technology       | Description                                                                 |
+| ---------------- | --------------------------------------------------------------------------- |
+| **Solidity**     | The core language for smart contract development on the Ethereum blockchain. |
+| **Hardhat**      | A professional development environment for building, testing, and deploying smart contracts. |
+| **OpenZeppelin** | Utilized for standard, secure, and community-vetted smart contract interfaces like IERC20. |
+| **Chainlink/Pyth** | Oracle adapters designed to integrate reliable, real-world price feeds for market valuation and settlement. |
 
 ## 🚀 Getting Started
 
-Follow these steps to set up the development environment and get the project running on your local machine.
+To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
--   [Node.js](https://nodejs.org/en/) (v18 or later)
--   [Git](https://git-scm.com/)
+You will need `Node.js`, `npm`, and `Git` installed on your machine.
 
 ### Installation
 
-1.  **Clone the repository**:
+1.  **Clone the Repository**:
     ```bash
     git clone https://github.com/olujimiAdebakin/BAOBAB-PROTOCOL.git
     ```
 
-2.  **Navigate to the project directory**:
+2.  **Navigate to the Project Directory**:
     ```bash
     cd BAOBAB-PROTOCOL
     ```
 
-3.  **Install dependencies** (using npm):
+3.  **Install Dependencies**:
     ```bash
     npm install
     ```
-    *Note: If you prefer Foundry, you would run `forge install` after initializing a Foundry project.*
+
+4.  **Set Up Environment Variables**:
+    Create a `.env` file in the root of the project and add the necessary environment variables.
+    ```env
+    PRIVATE_KEY="YOUR_ETHEREUM_PRIVATE_KEY"
+    INFURA_API_KEY="YOUR_INFURA_API_KEY"
+    ETHERSCAN_API_KEY="YOUR_ETHERSCAN_API_KEY"
+    ```
 
 ### Usage
 
-This project is structured as a smart contract framework. The primary usage involves compiling, testing, and deploying the contracts.
+The protocol is designed to be deployed and tested in a development environment like Hardhat.
 
-1.  **Compile the contracts**:
+-   **Compile the Contracts**:
+    Compile the smart contracts to check for errors and generate artifacts.
     ```bash
     npx hardhat compile
     ```
-    This will compile all Solidity files and generate ABI artifacts.
 
-2.  **Run tests**:
+-   **Run Tests**:
+    Execute the test suite to ensure all components are functioning correctly.
     ```bash
     npx hardhat test
     ```
-    This command will execute the test suite to ensure the contracts function as expected. *(Note: Test files would need to be created for the implemented libraries and contracts).*
 
-3.  **Deploy to a local network**:
+-   **Deploy to a Local Network**:
+    Run a local Hardhat node to simulate a blockchain environment.
     ```bash
-    npx hardhat node # Starts a local blockchain
-    npx hardhat run scripts/deploy.js --network localhost # Deploys contracts
+    npx hardhat node
     ```
-    *(Note: A `deploy.js` script would be required to orchestrate the deployment of the protocol's contracts).*
+    In a separate terminal, deploy the contracts to the local node.
+    ```bash
+    npx hardhat run scripts/deploy.js --network localhost
+    ```
+
+## 🏛️ Architectural Overview
+
+The BAOBAB Protocol is structured into several core modules, each responsible for a specific domain of functionality:
+
+-   📁 **`access`**: Manages permissions and ownership. The `AccessManager` contract is the central point for a sophisticated role-based access control system defined in `RoleRegistry`.
+-   📁 **`core`**: Contains the primary logic for trading operations.
+    -   **`trading/engines`**: Includes the `AutoDeleverageEngine`, `PerpEngine`, and `SpotEngine` which handle the core mechanics of different trading products.
+    -   **`markets`**: Manages market creation, registration, and risk parameters.
+    -   **`oracles`**: Provides adapters for various price feed providers like Chainlink and Pyth.
+-   📁 **`security`**: A suite of contracts designed to protect the protocol. `CircuitBreaker` halts trading during extreme volatility, `EmergencyPauser` allows for manual intervention, and `RateLimiter` prevents abuse.
+-   📁 **`baskets`**: Implements the logic for creating and managing tokenized asset baskets, including rebalancing and pricing.
+-   📁 **`vaults`**: Manages the protocol's funds, including the `LiquidityVault`, `InsuranceVault`, and `TreasuryVault`.
+-   📁 **`libraries`**: A collection of highly optimized utility libraries for math, array manipulation, and time-based calculations, forming the foundation of the protocol's efficiency and precision.
 
 ## 🤝 Contributing
 
-Contributions are welcome! If you have ideas for improvements or find any issues, please feel free to contribute.
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
--   **Fork the repository** on GitHub.
--   **Create a new branch** for your feature or bug fix: `git checkout -b feature/your-feature-name`.
--   **Make your changes** and commit them with clear, descriptive messages.
--   **Push your branch** to your fork: `git push origin feature/your-feature-name`.
--   **Submit a pull request** to the main repository.
+1.  **Fork the Project**
+2.  **Create your Feature Branch** (`git checkout -b feature/AmazingFeature`)
+3.  **Commit your Changes** (`git commit -m 'Add some AmazingFeature'`)
+4.  **Push to the Branch** (`git push origin feature/AmazingFeature`)
+5.  **Open a Pull Request**
 
-## 📜 License
+## 📄 License
 
-This project is currently not licensed. Please add a license file to define the terms under which this software can be used, modified, and distributed.
+This project is licensed under the **Business Source License 1.1 (BUSL-1.1)**. See the `SPDX-License-Identifier` in the source files for more information.
 
-## 👤 Author
+## ✍️ Author
 
 **Olujimi Adebakin**
 
--   **LinkedIn**: [your-linkedin-username](https://linkedin.com/in/your-linkedin-username)
--   **Twitter**: [@your-twitter-handle](https://twitter.com/your-twitter-handle)
+-   **LinkedIn**: [Your LinkedIn Profile](https://www.linkedin.com/in/your-username/)
+-   **Twitter**: [@YourTwitterHandle](https://twitter.com/your-username)
 
 ---
+
 <p align="center">
-  <img src="https://img.shields.io/badge/Solidity-^0.8.24-lightgrey?style=for-the-badge&logo=solidity" alt="Solidity"/>
-  <img src="https://img.shields.io/badge/Hardhat-Framework-blue?style=for-the-badge&logo=hardhat" alt="Hardhat"/>
-  <img src="https://img.shields.io/github/license/olujimiAdebakin/BAOBAB-PROTOCOL?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge" alt="Build Status"/>
+  <img src="https://img.shields.io/badge/Solidity-^0.8.24-blue?style=for-the-badge&logo=solidity" alt="Solidity Badge">
+  <img src="https://img.shields.io/badge/Hardhat-Framework-yellow?style=for-the-badge&logo=hardhat" alt="Hardhat Badge">
+  <img src="https://img.shields.io/badge/License-BUSL--1.1-green?style=for-the-badge" alt="License Badge">
 </p>
 
 [![Readme was generated by Dokugen](https://img.shields.io/badge/Readme%20was%20generated%20by-Dokugen-brightgreen)](https://www.npmjs.com/package/dokugen)
