@@ -29,9 +29,20 @@ interface IPositionManager {
 
     function closePosition(bytes32 positionId, uint256 closePrice) external returns (int256 realizedPnL);
 
-    function forceClosePosition(bytes32 positionId, uint256 closePrice, bool isLiquidation)
+    /**
+     * @notice Force close a position (called by ADL engine or liquidation engine)
+     * @param positionId Position to close
+     * @param executionPrice Price to close at
+     * @param isLiquidation Whether this is a liquidation
+     * @return realizedPnL Final realized PnL
+     */
+    function forceClosePosition(bytes32 positionId, uint256 executionPrice, bool isLiquidation)
         external
         returns (int256 realizedPnL);
+
+    // function forceClosePosition(bytes32 positionId, uint256 closePrice, bool isLiquidation)
+    //     external
+    //     returns (int256 realizedPnL);
 
     // ══════════════════════════════════════════════════════════════
     //                      POSITION UPDATES

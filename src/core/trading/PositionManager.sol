@@ -4,50 +4,54 @@ pragma solidity ^0.8.24;
 import {CommonStructs} from "../../libraries/structs/CommonStructs.sol";
 import {SecurityBase} from "../../security/SecurityBase.sol";
 import {AutoDeleverageEngine} from "../trading/engines/AutoDeleverageEngine.sol";
+import {ICircuitBreaker} from "../../interfaces/ICircuitBreaker.sol";
+import {IEmergencyPauser} from "../../interfaces/IEmergencyPauser.sol";
+import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
+import {ModuleIds} from "../../libraries/utils/ModuleIds.sol";
 
 /**
  * @title PositionManager
  * @author BAOBAB Protocol
  * @notice Core contract managing perpetual positions, margin, PnL, and liquidation
  * @dev Integrates with AutoDeleverageEngine for ADL queue updates. Uses market-specific risk tiers.
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
  *                                      POSITION MANAGER - FLOW DOCUMENTATION
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * POSITION LIFECYCLE FLOW:
- * 
+ *
  * 1. POSITION OPENING:
  *    ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌─────────────────┐
  *    │ Trading Engine  │ →  │ PositionManager  │ →  │ Risk Validation     │ →  │ Position Created│
  *    │ (openPosition)  │    │ (openPosition)   │    │ (leverage, margin)  │    │ & Events Emitted│
  *    └─────────────────┘    └──────────────────┘    └─────────────────────┘    └─────────────────┘
- * 
+ *
  * 2. POSITION MANAGEMENT:
  *    ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌─────────────────┐
  *    │ Trading Engine  │ →  │ PositionManager  │ →  │ PnL Calculation     │ →  │ Position Updated│
  *    │ (modifyPosition)│    │ (modifyPosition) │    │ & State Update      │    │ & Portfolio Sync│
  *    └─────────────────┘    └──────────────────┘    └─────────────────────┘    └─────────────────┘
- * 
+ *
  * 3. RISK MANAGEMENT:
  *    ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌─────────────────┐
  *    │ Price Updates   │ →  │ PositionManager  │ →  │ Liquidation Check   │ →  │ ADL Engine     │
  *    │ (oracle)        │    │ (updatePosition) │    │ & Margin Validation │    │ (if needed)     │
  *    └─────────────────┘    └──────────────────┘    └─────────────────────┘    └─────────────────┘
- * 
+ *
  * 4. POSITION CLOSING:
  *    ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌─────────────────┐
  *    │ Trading/Liquid. │ →  │ PositionManager  │ →  │ Final PnL Calc      │ →  │ Position Closed │
  *    │ Engine          │    │ (closePosition)  │    │ & Cleanup           │    │ & Funds Settled │
  *    └─────────────────┘    └──────────────────┘    └─────────────────────┘    └─────────────────┘
- * 
+ *
  * KEY COMPONENTS:
  * - Market Risk Tiers: HIGH (0.5% MMR), MEDIUM (0.75% MMR), LOW (1% MMR)
  * - Dynamic Liquidation: Price-based using market-specific maintenance margin
  * - Portfolio Tracking: Real-time collateral and PnL aggregation per trader
  * - Open Interest: Market and side-specific position tracking
  * - ADL Integration: Auto-deleverage queue management for risk reduction
- * 
+ *
  * RISK PARAMETERS PER TIER:
  * ┌─────────────┬────────────┬────────────┬──────────────┐
  * │ Liquidity   │ MMR        │ IMR        │ Max Leverage │
@@ -58,8 +62,13 @@ import {AutoDeleverageEngine} from "../trading/engines/AutoDeleverageEngine.sol"
  * │ LOW         │ 100 (1%)   │ 200 (2%)   │ 50x          │
  * └─────────────┴────────────┴────────────┴──────────────┘
  */
-
 contract PositionManager is SecurityBase {
+    ICircuitBreaker public circuitBreaker;
+    IEmergencyPauser public emergencyPauser;
+
+    using AddressUtils for address;
+    using ModuleIds for *;
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                          ENUMS & STRUCTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -72,9 +81,10 @@ contract PositionManager is SecurityBase {
      * - LOW: Events/illiquid markets with highest margin requirements
      */
     enum LiquidityTier {
-        HIGH,   // 0.5% MMR (BTC, ETH) - Highest liquidity, lowest risk
-        MEDIUM, // 0.75% MMR (altcoins) - Moderate liquidity and risk  
-        LOW     // 1% MMR (events, illiquid) - Lowest liquidity, highest risk
+        HIGH, // 0.5% MMR (BTC, ETH) - Highest liquidity, lowest risk
+        MEDIUM, // 0.75% MMR (altcoins) - Moderate liquidity and risk
+        LOW // 1% MMR (events, illiquid) - Lowest liquidity, highest risk
+
     }
 
     /**
@@ -111,45 +121,59 @@ contract PositionManager is SecurityBase {
         bool isActive;
     }
 
+    /// @notice Configuration parameters for each perpetual market
+    /// @dev Defines leverage limits, margin requirements, and funding behavior
+    struct MarketConfig {
+        uint16 maxLeverage; // Maximum allowed leverage (e.g., 100 = 100x)
+        uint16 mmrBps; // Maintenance margin requirement in basis points (e.g., 50 = 0.5%)
+        uint16 maxFundingRateBps; // Maximum funding rate per interval in basis points (e.g., 300 = 0.3%)
+        bool fundingEnabled; // Whether funding payments are active for this market
+        uint256 fundingInterval; // Time interval for funding updates (in seconds, e.g., 8h = 28800)
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                       STATE VARIABLES
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// @notice Mapping of position ID to position data
     mapping(bytes32 => PositionData) public positions;
-    
+
     /// @notice Mapping of trader address to their position IDs
     mapping(address => bytes32[]) public userPositions;
-    
+
     /// @notice Mapping of market ID to position IDs in that market
     mapping(bytes32 => bytes32[]) public marketPositions;
-    
+
     /// @notice Mapping of market ID and side to total open interest
     mapping(bytes32 => mapping(CommonStructs.Side => uint256)) public openInterest;
-    
+
     /// @notice Mapping of market ID to risk configuration
     mapping(bytes32 => MarketRiskConfig) public marketRiskConfigs;
-    
+
+    mapping(bytes32 => MarketConfig) public marketConfig;
+
     /// @notice Mapping of trader address to their portfolio summary
     mapping(address => CommonStructs.Portfolio) public portfolios;
 
     /// @notice Auto-deleverage engine for risk management
     AutoDeleverageEngine public adlEngine;
-    
+
     /// @notice Oracle registry contract for price feeds
     address public oracleRegistry;
-    
+
     /// @notice Trading engine contract (authorized caller)
     address public tradingEngine;
-    
-    /// @notice Liquidation engine contract (authorized caller)  
+
+    /// @notice Liquidation engine contract (authorized caller)
     address public liquidationEngine;
-    
+
     /// @notice Protocol admin address
     address public BaobabAdmin;
 
     /// @notice Counter for generating unique position IDs
     uint256 private _positionIdCounter;
+
+    address public fundingEngine;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                           EVENTS
@@ -179,11 +203,11 @@ contract PositionManager is SecurityBase {
      * @notice Emitted when a position is modified (size/collateral change)
      * @param positionId Unique identifier for the position
      * @param newSize New position size after modification
-     * @param newCollateral New collateral amount after modification  
+     * @param newCollateral New collateral amount after modification
      * @param realizedPnL Realized profit/loss from the modification
      */
     event PositionModified(bytes32 indexed positionId, uint256 newSize, uint256 newCollateral, int256 realizedPnL);
-    
+
     /**
      * @notice Emitted when a position is closed
      * @param positionId Unique identifier for the position
@@ -192,8 +216,10 @@ contract PositionManager is SecurityBase {
      * @param realizedPnL Final realized profit/loss
      * @param isLiquidation Flag indicating if closure was due to liquidation
      */
-    event PositionClosed(bytes32 indexed positionId, address indexed trader, uint256 closePrice, int256 realizedPnL, bool isLiquidation);
-    
+    event PositionClosed(
+        bytes32 indexed positionId, address indexed trader, uint256 closePrice, int256 realizedPnL, bool isLiquidation
+    );
+
     /**
      * @notice Emitted when a position is liquidated
      * @param positionId Unique identifier for the position
@@ -202,8 +228,14 @@ contract PositionManager is SecurityBase {
      * @param liquidationPrice Price at which liquidation occurred
      * @param liquidationFee Fee paid to the liquidator
      */
-    event PositionLiquidated(bytes32 indexed positionId, address indexed trader, address indexed liquidator, uint256 liquidationPrice, uint256 liquidationFee);
-    
+    event PositionLiquidated(
+        bytes32 indexed positionId,
+        address indexed trader,
+        address indexed liquidator,
+        uint256 liquidationPrice,
+        uint256 liquidationFee
+    );
+
     /**
      * @notice Emitted when funding is applied to a position
      * @param positionId Unique identifier for the position
@@ -211,7 +243,7 @@ contract PositionManager is SecurityBase {
      * @param newFundingIndex New funding index after application
      */
     event FundingPaid(bytes32 indexed positionId, int256 fundingAmount, int256 newFundingIndex);
-    
+
     /**
      * @notice Emitted when a position's ADL queue status changes
      * @param positionId Unique identifier for the position
@@ -219,7 +251,7 @@ contract PositionManager is SecurityBase {
      * @param adlScore ADL risk score used for queue prioritization
      */
     event ADLQueueStatusChanged(bytes32 indexed positionId, bool inQueue, uint256 adlScore);
-    
+
     /**
      * @notice Emitted when market risk parameters are configured
      * @param marketId Market identifier
@@ -235,36 +267,44 @@ contract PositionManager is SecurityBase {
 
     /// @notice Thrown when caller is not the authorized trading engine
     error PositionManager__OnlyTradingEngine();
-    
-    /// @notice Thrown when caller is not the authorized liquidation engine  
+
+    /// @notice Thrown when caller is not the authorized liquidation engine
     error PositionManager__OnlyLiquidationEngine();
-    
+
     /// @notice Thrown when caller is not the protocol admin
     error PositionManager__OnlyAdmin();
-    
+
     /// @notice Thrown when position ID does not exist
     error PositionManager__PositionNotFound();
-    
+
     /// @notice Thrown when collateral is insufficient for the operation
     error PositionManager__InsufficientCollateral();
-    
+
     /// @notice Thrown when position size is invalid (zero or too large)
     error PositionManager__InvalidSize();
-    
+
     /// @notice Thrown when attempting to liquidate a non-liquidatable position
     error PositionManager__PositionNotLiquidatable();
-    
+
     /// @notice Thrown when caller is not authorized for the operation
     error PositionManager__Unauthorized();
-    
+
     /// @notice Thrown when market risk configuration is not found
     error PositionManager__MarketNotConfigured();
-    
+
     /// @notice Thrown when requested leverage exceeds market maximum
     error PositionManager__LeverageExceedsMax();
-    
+
     /// @notice Thrown when initial margin requirements are not met
     error PositionManager__InsufficientInitialMargin();
+
+    /// @notice Thrown when an operation is attempted while the Emergency Pauser has the contract paused
+    error PositionManager__Paused();
+
+    /// @notice Thrown when an operation is attempted while the Circuit Breaker is active
+    error PositionManager__CircuitBroken();
+
+    error PositionManage__OnlyFundingEngine();
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                         CONSTRUCTOR
@@ -277,13 +317,31 @@ contract PositionManager is SecurityBase {
      * @param _oracleRegistry Oracle registry contract address
      * @param _adlEngine Auto-deleverage engine contract address
      */
-    constructor(address _admin, address _oracleRegistry, address _adlEngine) {
-        if (_admin == address(0) || _oracleRegistry == address(0) || _adlEngine == address(0))
-            revert PositionManager__Unauthorized();
+    constructor(
+        address _admin,
+        address _oracleRegistry,
+        address _adlEngine,
+        address _fundingEngine,
+        address _circuitBreaker,
+        address _emergencyPauser
+    ) {
+        // if (_admin == address(0) || _oracleRegistry == address(0) || _adlEngine == address(0))
+        //     revert PositionManager__Unauthorized();
+
+        // Use library functions for validation
+        _admin.validateNotZero();
+        _oracleRegistry.validateContract();
+        _adlEngine.validateContract();
+        _fundingEngine.validateContract();
+        _circuitBreaker.validateContract();
+        _emergencyPauser.validateContract();
 
         BaobabAdmin = _admin;
         oracleRegistry = _oracleRegistry;
         adlEngine = AutoDeleverageEngine(_adlEngine);
+        fundingEngine = _fundingEngine;
+        circuitBreaker = ICircuitBreaker(_circuitBreaker);
+        emergencyPauser = IEmergencyPauser(_emergencyPauser);
 
         _setDefaultRiskConfigs();
     }
@@ -293,10 +351,52 @@ contract PositionManager is SecurityBase {
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /**
+     * @notice Checks if the Pauser contract has paused operations.
+     */
+    modifier whenNotEmergencyPaused() {
+        if (emergencyPauser.protocolPaused() || emergencyPauser.isModulePaused(ModuleIds.POSITION_MANAGER)) {
+            revert PositionManager__Paused();
+        }
+        _;
+    }
+
+    /**
+     * @notice Ensures the circuit breaker is not triggered for this market or globally.
+     * @dev Use this on functions that *add new exposure* — e.g. opening or increasing positions.
+     *      If either the global circuit breaker or the market-specific breaker is active,
+     *      the transaction will revert.
+     * @param marketId The unique identifier of the market to check.
+     */
+    modifier whenCircuitActivated(bytes32 marketId) {
+        // Optionally validate market ID is nonzero
+        // marketId.validateNotZero();
+
+        // Prevent any operation if system-wide or market-specific breaker is active
+        if (circuitBreaker.globalHalt() || circuitBreaker.isCircuitTripped(marketId)) {
+            revert PositionManager__CircuitBroken();
+        }
+        _;
+    }
+
+    /**
+     * @notice Ensures only the global circuit breaker state is respected.
+     * @dev Use this on functions that *reduce exposure* — e.g. closing or decreasing positions.
+     *      Allows users to safely exit markets that are tripped locally while
+     *      still respecting global system halts.
+     */
+    modifier whenGlobalCircuitActivated() {
+        if (circuitBreaker.globalHalt()) {
+            revert PositionManager__CircuitBroken();
+        }
+        _;
+    }
+
+    /**
      * @notice Restrict access to only the trading engine
      * @dev Used for position opening/modification functions
      */
     modifier onlyTradingEngine() {
+        msg.sender.validateNotZero();
         if (msg.sender != tradingEngine) revert PositionManager__OnlyTradingEngine();
         _;
     }
@@ -306,6 +406,7 @@ contract PositionManager is SecurityBase {
      * @dev Used for position liquidation functions
      */
     modifier onlyLiquidationEngine() {
+        msg.sender.validateNotZero();
         if (msg.sender != liquidationEngine) revert PositionManager__OnlyLiquidationEngine();
         _;
     }
@@ -315,7 +416,14 @@ contract PositionManager is SecurityBase {
      * @dev Used for configuration and setup functions
      */
     modifier onlyAdmin() {
+        msg.sender.isZeroAssembly();
         if (msg.sender != BaobabAdmin) revert PositionManager__OnlyAdmin();
+        _;
+    }
+
+    modifier onlyFundingEngine() {
+        msg.sender.validateNotZero();
+        if (msg.sender == fundingEngine) revert PositionManage__OnlyFundingEngine();
         _;
     }
 
@@ -331,12 +439,12 @@ contract PositionManager is SecurityBase {
      * @param maintenanceMarginBps Maintenance Margin Rate in basis points (e.g., 50 = 0.5%)
      * @param initialMarginBps Initial Margin Rate in basis points (e.g., 100 = 1%)
      * @param maxLeverage Maximum allowed leverage for the market
-     * 
+     *
      * Requirements:
      * - Caller must be admin
      * - Margin rates must be valid (non-zero, IMR > MMR)
      * - Max leverage must be between 1 and 100
-     * 
+     *
      * Emits {MarketRiskConfigured} event on success
      */
     function setMarketRiskConfig(
@@ -345,9 +453,13 @@ contract PositionManager is SecurityBase {
         uint16 maintenanceMarginBps,
         uint16 initialMarginBps,
         uint16 maxLeverage
-    ) external onlyAdmin {
-        if (maintenanceMarginBps == 0 || initialMarginBps <= maintenanceMarginBps || maxLeverage == 0 || maxLeverage > 100)
+    ) external onlyAdmin whenNotEmergencyPaused whenCircuitActivated(marketId) {
+        if (
+            maintenanceMarginBps == 0 || initialMarginBps <= maintenanceMarginBps || maxLeverage == 0
+                || maxLeverage > 100
+        ) {
             revert PositionManager__InvalidSize();
+        }
 
         marketRiskConfigs[marketId] = MarketRiskConfig({
             liquidityTier: liquidityTier,
@@ -360,22 +472,66 @@ contract PositionManager is SecurityBase {
         emit MarketRiskConfigured(marketId, liquidityTier, maintenanceMarginBps, maxLeverage);
     }
 
+    function setMarketConfig(
+        bytes32 marketId,
+        uint16 maxLev,
+        uint16 mmr,
+        uint16 maxFund,
+        bool fundEnabled,
+        uint256 interval
+    ) external onlyAdmin whenNotEmergencyPaused whenCircuitActivated(marketId) {
+        marketConfig[marketId] = MarketConfig({
+            maxLeverage: maxLev,
+            mmrBps: mmr,
+            maxFundingRateBps: maxFund,
+            fundingEnabled: fundEnabled,
+            fundingInterval: interval
+        });
+    }
+
     /**
      * @notice Set the trading engine address
      * @dev Trading engine is authorized to open/modify positions
      * @param _tradingEngine Address of the trading engine contract
      */
-    function setTradingEngine(address _tradingEngine) external onlyAdmin {
+    function setTradingEngine(address _tradingEngine)
+        external
+        onlyAdmin
+        whenNotEmergencyPaused
+        whenGlobalCircuitActivated
+    {
+        _tradingEngine.validateContract();
         tradingEngine = _tradingEngine;
     }
 
     /**
-     * @notice Set the liquidation engine address  
+     * @notice Set the liquidation engine address
      * @dev Liquidation engine is authorized to liquidate positions
      * @param _liquidationEngine Address of the liquidation engine contract
      */
-    function setLiquidationEngine(address _liquidationEngine) external onlyAdmin {
+    function setLiquidationEngine(address _liquidationEngine)
+        external
+        onlyAdmin
+        whenNotEmergencyPaused
+        whenGlobalCircuitActivated
+    {
+        _liquidationEngine.validateContract();
         liquidationEngine = _liquidationEngine;
+    }
+    /**
+     * @notice Set the funding engine address
+     * @dev Funding engine is authorized to apply funding payments
+     * @param _fundingEngine Address of the funding engine contract
+     */
+
+    function setFundingEngine(address _fundingEngine)
+        external
+        onlyAdmin
+        whenNotEmergencyPaused
+        whenGlobalCircuitActivated
+    {
+        _fundingEngine.validateContract();
+        fundingEngine = _fundingEngine;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -421,7 +577,7 @@ contract PositionManager is SecurityBase {
         uint256 collateral,
         uint256 entryPrice,
         uint16 leverage
-    ) external onlyTradingEngine nonReentrant returns (bytes32 positionId) {
+    ) external onlyTradingEngine whenCircuitActivated(marketId) nonReentrant returns (bytes32 positionId) {
         if (size == 0) revert PositionManager__InvalidSize();
         if (collateral == 0) revert PositionManager__InsufficientCollateral();
 
@@ -467,7 +623,19 @@ contract PositionManager is SecurityBase {
 
         _updatePortfolio(trader);
 
+        // Initialize position in ADL system with zero PnL (not eligible for ADL)
+        adlEngine.updateADLQueue(
+            marketId,
+            positionId,
+            trader,
+            side,
+            0, // zero unrealized PnL - won't be added to queue
+            leverage
+        );
+
         emit PositionOpened(positionId, trader, marketId, side, size, entryPrice, leverage);
+
+        emit ADLQueueStatusChanged(positionId, false, 0);
     }
 
     /**
@@ -475,7 +643,7 @@ contract PositionManager is SecurityBase {
      * @dev Allows increasing/decreasing position size or adding/removing collateral
      * @param positionId Unique identifier of the position to modify
      * @param sizeDelta Change in position size (positive = increase, negative = decrease)
-     * @param collateralDelta Change in collateral (positive = add, negative = remove)  
+     * @param collateralDelta Change in collateral (positive = add, negative = remove)
      * @param currentPrice Current market price for PnL calculation
      * @return realizedPnL Realized profit/loss from the modification
      *
@@ -497,12 +665,14 @@ contract PositionManager is SecurityBase {
      *
      * Emits {PositionModified} event on success
      */
-    function modifyPosition(
-        bytes32 positionId,
-        int256 sizeDelta,
-        int256 collateralDelta,
-        uint256 currentPrice
-    ) external onlyTradingEngine nonReentrant returns (int256 realizedPnL) {
+    function modifyPosition(bytes32 positionId, int256 sizeDelta, int256 collateralDelta, uint256 currentPrice)
+        external
+        onlyTradingEngine
+        nonReentrant
+        whenNotEmergencyPaused
+        whenGlobalCircuitActivated
+        returns (int256 realizedPnL)
+    {
         PositionData storage posData = positions[positionId];
         if (posData.position.openedAt == 0) revert PositionManager__PositionNotFound();
 
@@ -535,16 +705,185 @@ contract PositionManager is SecurityBase {
             }
         }
 
-        pos.liquidationPrice = _calculateLiquidationPrice(pos.marketId, pos.side, pos.entryPrice, pos.collateral, pos.size);
+        pos.liquidationPrice =
+            _calculateLiquidationPrice(pos.marketId, pos.side, pos.entryPrice, pos.collateral, pos.size);
         posData.lastUpdateTime = block.timestamp;
         _updatePositionState(positionId, currentPrice);
 
         emit PositionModified(positionId, pos.size, pos.collateral, realizedPnL);
     }
 
+    /**
+     * @notice Close a position (regular close)
+     * @param positionId Position to close
+     * @param closePrice Price to close at
+     * @return realizedPnL Final realized PnL
+     */
+    function closePosition(bytes32 positionId, uint256 closePrice)
+        external
+        onlyTradingEngine
+        nonReentrant
+        whenNotEmergencyPaused
+        whenGlobalCircuitActivated
+        returns (int256 realizedPnL)
+    {
+        PositionData storage posData = positions[positionId];
+        if (posData.position.openedAt == 0) revert PositionManager__PositionNotFound();
+
+        CommonStructs.Position storage pos = posData.position;
+
+        // Calculate final PnL
+        realizedPnL = _calculateUnrealizedPnL(pos, closePrice);
+
+        // Update open interest
+        openInterest[pos.marketId][pos.side] -= pos.size;
+
+        // Remove from user positions
+        _removeUserPosition(pos.trader, positionId);
+
+        // Remove from ADL queue if present
+        if (posData.inADLQueue) {
+            adlEngine.removeFromADLQueue(pos.marketId, positionId, pos.side);
+            posData.inADLQueue = false;
+            emit ADLQueueStatusChanged(positionId, false, 0);
+        }
+
+        // Emit closure event
+        emit PositionClosed(positionId, pos.trader, closePrice, realizedPnL, false);
+
+        // Clean up position data
+        delete positions[positionId];
+
+        // Update portfolio
+        _updatePortfolio(pos.trader);
+
+        return realizedPnL;
+    }
+
+    /**
+     * @notice Force close a position (called by ADL engine)
+     * @param positionId Position to close
+     * @param executionPrice Price to close at
+     * @param isLiquidation Whether this is a liquidation
+     * @dev Only callable by ADL engine or liquidation engine
+     */
+    function forceClosePosition(bytes32 positionId, uint256 executionPrice, bool isLiquidation)
+        external
+        nonReentrant
+        whenNotEmergencyPaused
+        whenGlobalCircuitActivated
+        returns (int256 realizedPnL)
+    {
+        // Only ADL engine or liquidation engine can call this
+        if (msg.sender != address(adlEngine) && msg.sender != liquidationEngine) {
+            revert PositionManager__Unauthorized();
+        }
+
+        PositionData storage posData = positions[positionId];
+        if (posData.position.openedAt == 0) revert PositionManager__PositionNotFound();
+
+        CommonStructs.Position storage pos = posData.position;
+
+        // Calculate final PnL
+        realizedPnL = _calculateUnrealizedPnL(pos, executionPrice);
+
+        // Update open interest
+        openInterest[pos.marketId][pos.side] -= pos.size;
+
+        // Remove from user positions
+        _removeUserPosition(pos.trader, positionId);
+
+        // Remove from ADL queue if present
+        if (posData.inADLQueue) {
+            adlEngine.removeFromADLQueue(pos.marketId, positionId, pos.side);
+            posData.inADLQueue = false;
+            emit ADLQueueStatusChanged(positionId, false, 0);
+        }
+
+        // Emit closure event
+        emit PositionClosed(positionId, pos.trader, executionPrice, realizedPnL, isLiquidation);
+
+        // Clean up position data
+        delete positions[positionId];
+
+        // Update portfolio
+        _updatePortfolio(pos.trader);
+
+        return realizedPnL;
+    }
+
+    /**
+     * @notice Update position state and ADL queue
+     * @param positionId Position to update
+     * @param currentPrice Current market price
+     * @dev Callable by keepers or frontend
+     */
+    function updatePositionState(bytes32 positionId, uint256 currentPrice)
+        external
+        whenNotEmergencyPaused
+        whenGlobalCircuitActivated
+    {
+        _updatePositionState(positionId, currentPrice);
+    }
+
+    // Update the accumulated funding for a given position ID
+    function updateAccumulatedFunding(bytes32 posId, int256 newAccumulatedFunding)
+        external
+        onlyFundingEngine
+        whenGlobalCircuitActivated
+        whenNotEmergencyPaused
+    {
+        PositionData storage positionData = positions[posId];
+        positionData.accumulatedFunding = newAccumulatedFunding;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                    INTERNAL FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * @notice Internal position state update with ADL integration
+     * @param positionId Position to update
+     * @param currentPrice Current market price
+     * @dev Called by updatePositionState, modifyPosition, closePosition
+     */
+    function _updatePositionState(bytes32 positionId, uint256 currentPrice) internal {
+        PositionData storage posData = positions[positionId];
+        if (posData.position.openedAt == 0) return;
+
+        CommonStructs.Position storage pos = posData.position;
+
+        // Update unrealized PnL
+        int256 unrealizedPnL = _calculateUnrealizedPnL(pos, currentPrice);
+        pos.unrealizedPnL = unrealizedPnL;
+
+        // Update liquidation status
+        bool shouldBeLiquidatable = (pos.side == CommonStructs.Side.LONG && currentPrice <= pos.liquidationPrice)
+            || (pos.side == CommonStructs.Side.SHORT && currentPrice >= pos.liquidationPrice);
+
+        posData.isLiquidatable = shouldBeLiquidatable;
+
+        posData.lastUpdateTime = block.timestamp;
+
+        // === ADL Queue Logic ===
+        if (unrealizedPnL > 0) {
+            uint256 pnlUint = uint256(unrealizedPnL);
+            uint256 adlScore = pnlUint * pos.leverage;
+
+            adlEngine.updateADLQueue(pos.marketId, positionId, pos.trader, pos.side, pnlUint, pos.leverage);
+
+            if (!posData.inADLQueue) {
+                posData.inADLQueue = true;
+                emit ADLQueueStatusChanged(positionId, true, adlScore);
+            }
+        } else {
+            if (posData.inADLQueue) {
+                adlEngine.removeFromADLQueue(pos.marketId, positionId, pos.side);
+                posData.inADLQueue = false;
+                emit ADLQueueStatusChanged(positionId, false, 0);
+            }
+        }
+    }
 
     /**
      * @notice Calculate liquidation price for a position
@@ -596,7 +935,11 @@ contract PositionManager is SecurityBase {
      * @param price Current market price
      * @return pnl Unrealized profit/loss (positive = profit, negative = loss)
      */
-    function _calculateUnrealizedPnL(CommonStructs.Position storage pos, uint256 price) internal view returns (int256) {
+    function _calculateUnrealizedPnL(CommonStructs.Position storage pos, uint256 price)
+        internal
+        view
+        returns (int256)
+    {
         int256 diff = pos.side == CommonStructs.Side.LONG
             ? int256(price) - int256(pos.entryPrice)
             : int256(pos.entryPrice) - int256(price);
@@ -622,9 +965,8 @@ contract PositionManager is SecurityBase {
             count++;
         }
 
-        uint256 marginRatio = totalCol > 0
-            ? ((totalCol + uint256(totalPnL > 0 ? totalPnL : 0)) * 10000) / totalCol
-            : 0;
+        uint256 marginRatio =
+            totalCol > 0 ? ((totalCol + uint256(totalPnL > 0 ? totalPnL : int256(0))) * 10000) / totalCol : 0;
 
         portfolios[trader] = CommonStructs.Portfolio({
             trader: trader,
@@ -710,5 +1052,9 @@ contract PositionManager is SecurityBase {
      */
     function getOpenInterest(bytes32 marketId, CommonStructs.Side side) external view returns (uint256) {
         return openInterest[marketId][side];
+    }
+
+    function getMarketPositions(bytes32 marketId) external view returns (bytes32[] memory) {
+        return marketPositions[marketId];
     }
 }
