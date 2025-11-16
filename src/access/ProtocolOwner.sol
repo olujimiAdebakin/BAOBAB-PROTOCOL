@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {AccessManager} from "./AccessManager.sol";
 import {RoleRegistry} from "./RoleRegistry.sol";
+import {AddressUtils} from ".././libraries/utils/AddressUtils.sol";
 
 /**
  * @title ProtocolOwner
@@ -15,6 +16,7 @@ import {RoleRegistry} from "./RoleRegistry.sol";
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
  */
 contract ProtocolOwner {
+    using AddressUtils for *;
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                       STATE VARIABLES
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -69,6 +71,11 @@ contract ProtocolOwner {
             revert ProtocolOwner__InvalidAddress();
         }
 
+        _accessManager.validateNotZero();
+        _treasury.validateNotZero();
+        _insuranceVault.validateNotZero();
+        _feeRecipient.validateNotZero();
+
         accessManager = AccessManager(_accessManager);
         treasury = _treasury;
         insuranceVault = _insuranceVault;
@@ -87,6 +94,7 @@ contract ProtocolOwner {
     }
 
     modifier whenNotPaused() {
+        //   protocolPaused.validateNotZero();
         if (protocolPaused) revert ProtocolOwner__ProtocolPaused();
         _;
     }
@@ -100,6 +108,7 @@ contract ProtocolOwner {
      * @param newTreasury New treasury address
      */
     function setTreasury(address newTreasury) external onlyOwner {
+        newTreasury.validateNotZero();
         if (newTreasury == address(0)) revert ProtocolOwner__InvalidAddress();
 
         address oldTreasury = treasury;
@@ -113,6 +122,7 @@ contract ProtocolOwner {
      * @param newVault New insurance vault address
      */
     function setInsuranceVault(address newVault) external onlyOwner {
+        newVault.validateNotZero();
         if (newVault == address(0)) revert ProtocolOwner__InvalidAddress();
 
         address oldVault = insuranceVault;
@@ -126,6 +136,7 @@ contract ProtocolOwner {
      * @param newRecipient New fee recipient address
      */
     function setFeeRecipient(address newRecipient) external onlyOwner {
+        newRecipient.validateNotZero();
         if (newRecipient == address(0)) revert ProtocolOwner__InvalidAddress();
 
         address oldRecipient = feeRecipient;
@@ -179,6 +190,7 @@ contract ProtocolOwner {
         if (!emergencyWithdrawalEnabled) {
             revert ProtocolOwner__EmergencyWithdrawalNotEnabled();
         }
+
         if (to == address(0)) revert ProtocolOwner__InvalidAddress();
 
         // Transfer tokens

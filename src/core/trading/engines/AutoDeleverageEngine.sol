@@ -4,6 +4,11 @@ pragma solidity ^0.8.24;
 import {CommonStructs} from "../../../libraries/structs/CommonStructs.sol";
 import {SecurityBase} from "../../../security/SecurityBase.sol";
 import {IPositionManager} from "../../../interfaces/IPositionManager.sol";
+import {AddressUtils} from "../../../libraries/utils/AddressUtils.sol";
+import {LiquidationEngine} from "../LiquidationEngine.sol";
+import {AddressUtils} from "../../../libraries/utils/AddressUtils.sol";
+import {ICircuitBreaker} from "../../../interfaces/ICircuitBreaker.sol";
+import {IEmergencyPauser} from "../../../interfaces/IEmergencyPauser.sol";
 
 /**
  * @title AutoDeleverageEngine
@@ -49,7 +54,11 @@ import {IPositionManager} from "../../../interfaces/IPositionManager.sol";
  */
 contract AutoDeleverageEngine is SecurityBase {
     IPositionManager public positionManager;
+    LiquidationEngine public liquidationEngine;
+    ICircuitBreaker public circuitBreaker;
+    IEmergencyPauser public emergencyPauser;
 
+    using AddressUtils for *;
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                          STRUCTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -263,6 +272,12 @@ contract AutoDeleverageEngine is SecurityBase {
     error ADL__OnlyLiquidationEngine();
 
     /**
+     * @notice Reverts when caller is not the PositionManager
+     * @dev ADL queue updates must come from position lifecycle events
+     * @dev Ensures only valid position changes affect ADL candidacy
+     */
+    error ADL__onlyPositionManager();
+    /**
      * @notice Reverts when caller is not protocol admin
      * @dev Configuration changes and emergency operations require admin privileges
      * @dev Protects critical ADL parameters from unauthorized modification
@@ -275,6 +290,20 @@ contract AutoDeleverageEngine is SecurityBase {
      * @dev Some markets may operate without ADL for specific risk profiles
      */
     error ADL__ADLNotEnabled();
+
+    /**
+     * @notice Reverts when ADL engine or protocol is paused
+     * @dev Pausing ADL halts all automatic deleveraging operations
+     * @dev Used in emergencies to prevent further risk during crises
+     */
+    error ADL_ENGINE__Paused();
+
+    /**
+     * @notice Reverts when circuit breaker is active for the market
+     * @dev ADL should not operate during circuit breaker halts
+     * @dev Prevents further risk actions when markets are already frozen
+     */
+    error ADL__CircuitActive();
 
     /**
      * @notice Reverts when insufficient profitable positions available for ADL
@@ -301,7 +330,13 @@ contract AutoDeleverageEngine is SecurityBase {
     //                                         CONSTRUCTOR
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    constructor(address _admin, address _liquidationEngine, address _insuranceVault, address _positionManager) {
+    constructor(
+        address _admin,
+        address _liquidationEngine,
+        address _insuranceVault,
+        address _positionManager,
+        address _liquidationEngine
+    ) {
         // Zero-address guard — prevents deployment with invalid core contracts
         if (
             _admin == address(0) || _liquidationEngine == address(0) || _insuranceVault == address(0)
@@ -309,6 +344,11 @@ contract AutoDeleverageEngine is SecurityBase {
         ) {
             revert ADL__InvalidConfig();
         }
+
+        _admin.validateNotZero();
+        _liquidationEngine.validateContract();
+        _insuranceVault.validateContract();
+        _positionManager.validateContract();
 
         positionManager = IPositionManager(_positionManager);
         if (_positionManager == address(0)) revert ADL__InvalidConfig();
@@ -323,11 +363,36 @@ contract AutoDeleverageEngine is SecurityBase {
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     modifier onlyLiquidationEngine() {
+        msg.sender.isZero();
         if (msg.sender != liquidationEngine) revert ADL__OnlyLiquidationEngine();
         _;
     }
 
+    modifier onlyPositionManager() {
+        msg.sender.isZero();
+        if (msg.sender != positionManager) revert ADL__onlyPositionManager();
+        _;
+    }
+
+    /**
+     * @notice Checks if the Pauser contract has paused operations.
+     */
+    modifier whenNotEmergencyPaused() {
+        if (emergencyPauser.protocolPaused() || emergencyPauser.isModulePaused(ModuleIds.ADL_ENGINE)) {
+            revert ADL_ENGINE__Paused();
+        }
+        _;
+    }
+
+    modifier whenCircuitNotActive(bytes32 marketId) {
+        if (circuitBreaker.globalHalt() || circuitBreaker.isCircuitTripped(marketId)) {
+            revert ADL__CircuitActive();
+        }
+        _;
+    }
+
     modifier onlyAdmin() {
+        msg.sender.validateNotZero();
         if (msg.sender != BaobabAdmin) revert ADL__OnlyAdmin();
         _;
     }
@@ -369,7 +434,7 @@ contract AutoDeleverageEngine is SecurityBase {
         CommonStructs.Side side,
         uint256 sizeToClose,
         uint256 executionPrice
-    ) external onlyLiquidationEngine nonReentrant returns (bool success) {
+    ) external onlyLiquidationEngine whenNotEmergencyPaused nonReentrant returns (bool success) {
         ADLConfig memory config = adlConfigs[marketId];
 
         if (!config.isEnabled) revert ADL__ADLNotEnabled();
@@ -461,7 +526,7 @@ contract AutoDeleverageEngine is SecurityBase {
         CommonStructs.Side side,
         uint256 unrealizedPnL,
         uint16 leverage
-    ) external {
+    ) external onlyPositionManager whenCircuitNotActive whenNotEmergencyPaused {
         // Only include profitable positions in ADL queue
         if (unrealizedPnL == 0) {
             _removePositionFromQueue(marketId, positionId, side);
@@ -491,7 +556,7 @@ contract AutoDeleverageEngine is SecurityBase {
         } else {
             // Add new entry
             queue.push(candidate);
-            queueIndices[positionId] = queue.length;
+            queueIndices[positionId] = queue.length + 1;
         }
 
         // Re-sort queue by ADL score (descending)
@@ -506,7 +571,12 @@ contract AutoDeleverageEngine is SecurityBase {
      * @param positionId Position identifier
      * @param side Position side
      */
-    function removeFromADLQueue(bytes32 marketId, bytes32 positionId, CommonStructs.Side side) external {
+    function removeFromADLQueue(bytes32 marketId, bytes32 positionId, CommonStructs.Side side)
+        external
+        onlyPositionManager
+        whenNotEmergencyPaused
+        whenCircuitNotActive
+    {
         _removePositionFromQueue(marketId, positionId, side);
     }
 
@@ -541,7 +611,7 @@ contract AutoDeleverageEngine is SecurityBase {
      * @notice Toggle ADL for a market
      * @param marketId Market identifier
      */
-    function toggleADL(bytes32 marketId) external onlyAdmin {
+    function toggleADL(bytes32 marketId) external onlyAdmin whenNotEmergencyPaused {
         adlConfigs[marketId].isEnabled = !adlConfigs[marketId].isEnabled;
     }
 

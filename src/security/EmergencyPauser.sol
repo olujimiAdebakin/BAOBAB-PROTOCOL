@@ -59,7 +59,7 @@ contract EmergencyPauser is SecurityBase {
     mapping(address => AuthorityLevel) public authorities;
 
     /// @notice Admin address
-    address public admin;
+    address public protocolAdmin;
 
     /// @notice Multi-sig address
     address public multisig;
@@ -103,7 +103,7 @@ contract EmergencyPauser is SecurityBase {
             revert EmergencyPauser__InvalidAddress();
         }
 
-        admin = _admin;
+        protocolAdmin = _admin;
         multisig = _multisig;
         unpauseDelay = 24 hours;
 
@@ -233,6 +233,15 @@ contract EmergencyPauser is SecurityBase {
         emit ModuleUnpaused(moduleId, msg.sender);
     }
 
+    /**
+     * @notice Emergency unpause protocol (bypasses any timelock)
+     * @dev Only multisig in extreme recovery scenarios
+     */
+    function emergencyUnpauseProtocol() external onlyAuthority(AuthorityLevel.MULTISIG) {
+        protocolPaused = false;
+        emit ProtocolUnpaused(msg.sender);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                     ADMIN FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -269,9 +278,9 @@ contract EmergencyPauser is SecurityBase {
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * @notice Check if module is paused
+     * @notice Check if module is paused (includes protocol-level pause)
      * @param moduleId Module to check
-     * @return bool True if paused
+     * @return bool True if paused (either module-specific or protocol-wide)ed
      */
     function isModulePaused(bytes32 moduleId) external view returns (bool) {
         return protocolPaused || modulePauseStates[moduleId].isPaused;
