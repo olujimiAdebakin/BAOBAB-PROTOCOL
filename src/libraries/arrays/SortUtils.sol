@@ -12,10 +12,10 @@ library SortUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // ERRORS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Reverts when array is empty
     error EmptyArray();
-    
+
     /// @dev Reverts when arrays have mismatched lengths
     error ArrayLengthMismatch();
 
@@ -30,17 +30,14 @@ library SortUtils {
      * @return sorted Sorted array
      * @dev O(n log n) average case, O(n²) worst case
      */
-    function quickSort(
-        uint256[] memory arr,
-        bool ascending
-    ) internal pure returns (uint256[] memory sorted) {
+    function quickSort(uint256[] memory arr, bool ascending) internal pure returns (uint256[] memory sorted) {
         if (arr.length == 0) revert EmptyArray();
-        
+
         sorted = new uint256[](arr.length);
         for (uint256 i = 0; i < arr.length; i++) {
             sorted[i] = arr[i];
         }
-        
+
         _quickSort(sorted, 0, int256(sorted.length) - 1, ascending);
     }
 
@@ -50,17 +47,18 @@ library SortUtils {
      * @param comparator Custom comparison function
      * @return sorted Sorted array
      */
-    function quickSortWithComparator(
-        uint256[] memory arr,
-        function(uint256, uint256) pure returns (bool) comparator
-    ) internal pure returns (uint256[] memory sorted) {
+    function quickSortWithComparator(uint256[] memory arr, function(uint256, uint256) pure returns (bool) comparator)
+        internal
+        pure
+        returns (uint256[] memory sorted)
+    {
         if (arr.length == 0) revert EmptyArray();
-        
+
         sorted = new uint256[](arr.length);
         for (uint256 i = 0; i < arr.length; i++) {
             sorted[i] = arr[i];
         }
-        
+
         _quickSortWithComparator(sorted, 0, int256(sorted.length) - 1, comparator);
     }
 
@@ -75,21 +73,18 @@ library SortUtils {
      * @return sorted Sorted array
      * @dev O(n²) but very efficient for small arrays (<20 elements)
      */
-    function insertionSort(
-        uint256[] memory arr,
-        bool ascending
-    ) internal pure returns (uint256[] memory sorted) {
+    function insertionSort(uint256[] memory arr, bool ascending) internal pure returns (uint256[] memory sorted) {
         if (arr.length == 0) revert EmptyArray();
-        
+
         sorted = new uint256[](arr.length);
         for (uint256 i = 0; i < arr.length; i++) {
             sorted[i] = arr[i];
         }
-        
+
         for (uint256 i = 1; i < sorted.length; i++) {
             uint256 key = sorted[i];
             uint256 j = i;
-            
+
             if (ascending) {
                 while (j > 0 && sorted[j - 1] > key) {
                     sorted[j] = sorted[j - 1];
@@ -129,16 +124,16 @@ library SortUtils {
             revert ArrayLengthMismatch();
         }
         if (orderIds.length == 0) return orderIds;
-        
+
         // Create array of indices to sort
         uint256[] memory indices = new uint256[](orderIds.length);
         for (uint256 i = 0; i < indices.length; i++) {
             indices[i] = i;
         }
-        
+
         // Sort indices based on price-time priority
         _quickSortIndices(indices, prices, timestamps, isBid);
-        
+
         // Build sorted order IDs from sorted indices
         sortedOrderIds = new uint256[](orderIds.length);
         for (uint256 i = 0; i < indices.length; i++) {
@@ -166,14 +161,14 @@ library SortUtils {
             revert ArrayLengthMismatch();
         }
         if (arr.length == 0) return arr;
-        
+
         uint256[] memory indices = new uint256[](arr.length);
         for (uint256 i = 0; i < indices.length; i++) {
             indices[i] = i;
         }
-        
+
         _quickSortMultiCriteria(indices, primaryValues, secondaryValues, primaryDescending, secondaryDescending);
-        
+
         sorted = new uint256[](arr.length);
         for (uint256 i = 0; i < indices.length; i++) {
             sorted[i] = arr[indices[i]];
@@ -191,17 +186,14 @@ library SortUtils {
      * @return sorted Sorted array
      * @dev O(n log n) guaranteed, stable sort
      */
-    function mergeSort(
-        uint256[] memory arr,
-        bool ascending
-    ) internal pure returns (uint256[] memory sorted) {
+    function mergeSort(uint256[] memory arr, bool ascending) internal pure returns (uint256[] memory sorted) {
         if (arr.length == 0) revert EmptyArray();
-        
+
         sorted = new uint256[](arr.length);
         for (uint256 i = 0; i < arr.length; i++) {
             sorted[i] = arr[i];
         }
-        
+
         if (sorted.length > 1) {
             _mergeSort(sorted, 0, sorted.length - 1, ascending);
         }
@@ -218,24 +210,21 @@ library SortUtils {
      * @return sorted Sorted array
      * @dev O(n log n) guaranteed, in-place
      */
-    function heapSort(
-        uint256[] memory arr,
-        bool ascending
-    ) internal pure returns (uint256[] memory sorted) {
+    function heapSort(uint256[] memory arr, bool ascending) internal pure returns (uint256[] memory sorted) {
         if (arr.length == 0) revert EmptyArray();
-        
+
         sorted = new uint256[](arr.length);
         for (uint256 i = 0; i < arr.length; i++) {
             sorted[i] = arr[i];
         }
-        
+
         int256 n = int256(sorted.length);
-        
+
         // Build heap
         for (int256 i = n / 2 - 1; i >= 0; i--) {
             _heapify(sorted, n, i, ascending);
         }
-        
+
         // Extract elements from heap
         for (int256 i = n - 1; i > 0; i--) {
             // Move current root to end
@@ -254,18 +243,15 @@ library SortUtils {
      * @param k K-th smallest element to find (0-indexed)
      * @return kthSmallest The k-th smallest element
      */
-    function quickSelect(
-        uint256[] memory arr,
-        uint256 k
-    ) internal pure returns (uint256 kthSmallest) {
+    function quickSelect(uint256[] memory arr, uint256 k) internal pure returns (uint256 kthSmallest) {
         if (arr.length == 0) revert EmptyArray();
         if (k >= arr.length) revert IndexOutOfBounds();
-        
+
         uint256[] memory copy = new uint256[](arr.length);
         for (uint256 i = 0; i < arr.length; i++) {
             copy[i] = arr[i];
         }
-        
+
         return _quickSelect(copy, 0, int256(copy.length) - 1, int256(k));
     }
 
@@ -276,16 +262,12 @@ library SortUtils {
      * @param descending Whether to get largest (true) or smallest (false)
      * @return topK Array of top k elements
      */
-    function topK(
-        uint256[] memory arr,
-        uint256 k,
-        bool descending
-    ) internal pure returns (uint256[] memory topK) {
+    function topKs(uint256[] memory arr, uint256 k, bool descending) internal pure returns (uint256[] memory topK) {
         if (arr.length == 0) revert EmptyArray();
         if (k == 0) return new uint256[](0);
-        
+
         k = k > arr.length ? arr.length : k;
-        
+
         if (descending) {
             // For largest k elements, find (n-k)th smallest and take larger ones
             uint256 threshold = quickSelect(arr, arr.length - k);
@@ -304,7 +286,7 @@ library SortUtils {
      */
     function median(uint256[] memory arr) internal pure returns (uint256) {
         if (arr.length == 0) revert EmptyArray();
-        
+
         if (arr.length % 2 == 1) {
             // Odd length: return middle element
             return quickSelect(arr, arr.length / 2);
@@ -326,12 +308,9 @@ library SortUtils {
      * @param ascending Whether to check ascending order
      * @return isSorted True if array is sorted
      */
-    function isSorted(
-        uint256[] memory arr,
-        bool ascending
-    ) internal pure returns (bool) {
+    function isSorted(uint256[] memory arr, bool ascending) internal pure returns (bool) {
         if (arr.length <= 1) return true;
-        
+
         for (uint256 i = 1; i < arr.length; i++) {
             if (ascending) {
                 if (arr[i] < arr[i - 1]) return false;
@@ -349,7 +328,7 @@ library SortUtils {
     function reverse(uint256[] memory arr) internal pure {
         uint256 left = 0;
         uint256 right = arr.length - 1;
-        
+
         while (left < right) {
             (arr[left], arr[right]) = (arr[right], arr[left]);
             left++;
@@ -362,12 +341,7 @@ library SortUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// @dev QuickSort implementation
-    function _quickSort(
-        uint256[] memory arr,
-        int256 left,
-        int256 right,
-        bool ascending
-    ) private pure {
+    function _quickSort(uint256[] memory arr, int256 left, int256 right, bool ascending) private pure {
         if (left < right) {
             int256 pi = _partition(arr, left, right, ascending);
             _quickSort(arr, left, pi - 1, ascending);
@@ -375,15 +349,14 @@ library SortUtils {
         }
     }
 
-    function _partition(
-        uint256[] memory arr,
-        int256 left,
-        int256 right,
-        bool ascending
-    ) private pure returns (int256) {
+    function _partition(uint256[] memory arr, int256 left, int256 right, bool ascending)
+        private
+        pure
+        returns (int256)
+    {
         uint256 pivot = arr[uint256(right)];
         int256 i = left - 1;
-        
+
         for (int256 j = left; j <= right - 1; j++) {
             bool condition = ascending ? arr[uint256(j)] <= pivot : arr[uint256(j)] >= pivot;
             if (condition) {
@@ -417,7 +390,7 @@ library SortUtils {
     ) private pure returns (int256) {
         uint256 pivot = arr[uint256(right)];
         int256 i = left - 1;
-        
+
         for (int256 j = left; j <= right - 1; j++) {
             if (comparator(arr[uint256(j)], pivot)) {
                 i++;
@@ -463,7 +436,7 @@ library SortUtils {
     ) private pure returns (int256) {
         uint256 pivotIndex = indices[uint256(right)];
         int256 i = left - 1;
-        
+
         for (int256 j = left; j <= right - 1; j++) {
             uint256 currentIndex = indices[uint256(j)];
             if (_comparePriceTime(currentIndex, pivotIndex, prices, timestamps, isBid)) {
@@ -497,7 +470,9 @@ library SortUtils {
         bool primaryDescending,
         bool secondaryDescending
     ) private pure {
-        _quickSortMultiCriteriaRecursive(indices, primary, secondary, 0, int256(indices.length) - 1, primaryDescending, secondaryDescending);
+        _quickSortMultiCriteriaRecursive(
+            indices, primary, secondary, 0, int256(indices.length) - 1, primaryDescending, secondaryDescending
+        );
     }
 
     function _quickSortMultiCriteriaRecursive(
@@ -510,9 +485,15 @@ library SortUtils {
         bool secondaryDescending
     ) private pure {
         if (left < right) {
-            int256 pi = _partitionMultiCriteria(indices, primary, secondary, left, right, primaryDescending, secondaryDescending);
-            _quickSortMultiCriteriaRecursive(indices, primary, secondary, left, pi - 1, primaryDescending, secondaryDescending);
-            _quickSortMultiCriteriaRecursive(indices, primary, secondary, pi + 1, right, primaryDescending, secondaryDescending);
+            int256 pi = _partitionMultiCriteria(
+                indices, primary, secondary, left, right, primaryDescending, secondaryDescending
+            );
+            _quickSortMultiCriteriaRecursive(
+                indices, primary, secondary, left, pi - 1, primaryDescending, secondaryDescending
+            );
+            _quickSortMultiCriteriaRecursive(
+                indices, primary, secondary, pi + 1, right, primaryDescending, secondaryDescending
+            );
         }
     }
 
@@ -527,10 +508,14 @@ library SortUtils {
     ) private pure returns (int256) {
         uint256 pivotIndex = indices[uint256(right)];
         int256 i = left - 1;
-        
+
         for (int256 j = left; j <= right - 1; j++) {
             uint256 currentIndex = indices[uint256(j)];
-            if (_compareMultiCriteria(currentIndex, pivotIndex, primary, secondary, primaryDescending, secondaryDescending)) {
+            if (
+                _compareMultiCriteria(
+                    currentIndex, pivotIndex, primary, secondary, primaryDescending, secondaryDescending
+                )
+            ) {
                 i++;
                 (indices[uint256(i)], indices[uint256(j)]) = (indices[uint256(j)], indices[uint256(i)]);
             }
@@ -555,12 +540,7 @@ library SortUtils {
     }
 
     /// @dev MergeSort implementation
-    function _mergeSort(
-        uint256[] memory arr,
-        uint256 left,
-        uint256 right,
-        bool ascending
-    ) private pure {
+    function _mergeSort(uint256[] memory arr, uint256 left, uint256 right, bool ascending) private pure {
         if (left < right) {
             uint256 mid = left + (right - left) / 2;
             _mergeSort(arr, left, mid, ascending);
@@ -569,26 +549,24 @@ library SortUtils {
         }
     }
 
-    function _merge(
-        uint256[] memory arr,
-        uint256 left,
-        uint256 mid,
-        uint256 right,
-        bool ascending
-    ) private pure {
+    function _merge(uint256[] memory arr, uint256 left, uint256 mid, uint256 right, bool ascending) private pure {
         uint256 n1 = mid - left + 1;
         uint256 n2 = right - mid;
-        
+
         uint256[] memory leftArr = new uint256[](n1);
         uint256[] memory rightArr = new uint256[](n2);
-        
-        for (uint256 i = 0; i < n1; i++) leftArr[i] = arr[left + i];
-        for (uint256 j = 0; j < n2; j++) rightArr[j] = arr[mid + 1 + j];
-        
+
+        for (uint256 i1 = 0; i1 < n1; i1++) {
+            leftArr[i1] = arr[left + i1];
+        }
+        for (uint256 j1 = 0; j1 < n2; j1++) {
+            rightArr[j1] = arr[mid + 1 + j1];
+        }
+
         uint256 i = 0;
         uint256 j = 0;
         uint256 k = left;
-        
+
         while (i < n1 && j < n2) {
             bool condition = ascending ? leftArr[i] <= rightArr[j] : leftArr[i] >= rightArr[j];
             if (condition) {
@@ -600,13 +578,13 @@ library SortUtils {
             }
             k++;
         }
-        
+
         while (i < n1) {
             arr[k] = leftArr[i];
             i++;
             k++;
         }
-        
+
         while (j < n2) {
             arr[k] = rightArr[j];
             j++;
@@ -615,32 +593,25 @@ library SortUtils {
     }
 
     /// @dev HeapSort implementation
-    function _heapify(
-        uint256[] memory arr,
-        int256 n,
-        int256 i,
-        bool ascending
-    ) private pure {
+    function _heapify(uint256[] memory arr, int256 n, int256 i, bool ascending) private pure {
         int256 extreme = i; // Initialize extreme as root
         int256 left = 2 * i + 1;
         int256 right = 2 * i + 2;
-        
+
         // If left child is more extreme than root
         if (left < n) {
-            bool leftCondition = ascending ? 
-                arr[uint256(left)] > arr[uint256(extreme)] : 
-                arr[uint256(left)] < arr[uint256(extreme)];
+            bool leftCondition =
+                ascending ? arr[uint256(left)] > arr[uint256(extreme)] : arr[uint256(left)] < arr[uint256(extreme)];
             if (leftCondition) extreme = left;
         }
-        
+
         // If right child is more extreme than current extreme
         if (right < n) {
-            bool rightCondition = ascending ? 
-                arr[uint256(right)] > arr[uint256(extreme)] : 
-                arr[uint256(right)] < arr[uint256(extreme)];
+            bool rightCondition =
+                ascending ? arr[uint256(right)] > arr[uint256(extreme)] : arr[uint256(right)] < arr[uint256(extreme)];
             if (rightCondition) extreme = right;
         }
-        
+
         // If extreme is not root
         if (extreme != i) {
             (arr[uint256(i)], arr[uint256(extreme)]) = (arr[uint256(extreme)], arr[uint256(i)]);
@@ -649,16 +620,11 @@ library SortUtils {
     }
 
     /// @dev QuickSelect implementation
-    function _quickSelect(
-        uint256[] memory arr,
-        int256 left,
-        int256 right,
-        int256 k
-    ) private pure returns (uint256) {
+    function _quickSelect(uint256[] memory arr, int256 left, int256 right, int256 k) private pure returns (uint256) {
         if (left == right) return arr[uint256(left)];
-        
+
         int256 pivotIndex = _partition(arr, left, right, true);
-        
+
         if (k == pivotIndex) {
             return arr[uint256(k)];
         } else if (k < pivotIndex) {
@@ -669,15 +635,12 @@ library SortUtils {
     }
 
     /// @dev Filter helpers for topK
-    function _filterGreaterOrEqual(
-        uint256[] memory arr,
-        uint256 threshold
-    ) private pure returns (uint256[] memory) {
+    function _filterGreaterOrEqual(uint256[] memory arr, uint256 threshold) private pure returns (uint256[] memory) {
         uint256 count = 0;
         for (uint256 i = 0; i < arr.length; i++) {
             if (arr[i] >= threshold) count++;
         }
-        
+
         uint256[] memory result = new uint256[](count);
         uint256 index = 0;
         for (uint256 i = 0; i < arr.length; i++) {
@@ -689,15 +652,12 @@ library SortUtils {
         return result;
     }
 
-    function _filterLessOrEqual(
-        uint256[] memory arr,
-        uint256 threshold
-    ) private pure returns (uint256[] memory) {
+    function _filterLessOrEqual(uint256[] memory arr, uint256 threshold) private pure returns (uint256[] memory) {
         uint256 count = 0;
         for (uint256 i = 0; i < arr.length; i++) {
             if (arr[i] <= threshold) count++;
         }
-        
+
         uint256[] memory result = new uint256[](count);
         uint256 index = 0;
         for (uint256 i = 0; i < arr.length; i++) {
@@ -712,6 +672,6 @@ library SortUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // CUSTOM ERRORS (Placeholder for compilation)
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     error IndexOutOfBounds();
 }

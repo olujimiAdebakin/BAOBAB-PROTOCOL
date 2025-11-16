@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
+import {IERC165} from "../interfaces/IERC165.sol";
+
 /**
  * @title AddressUtils
  * @author BAOBAB Protocol
@@ -12,16 +14,16 @@ library AddressUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // ERRORS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Reverts when address is zero
     error ZeroAddress();
-    
+
     /// @dev Reverts when address is not a contract
     error NotAContract();
-    
+
     /// @dev Reverts when contract call fails
     error CallFailed();
-    
+
     /// @dev Reverts when delegate call is not allowed to target
     error DelegateCallNotAllowed();
 
@@ -80,13 +82,12 @@ library AddressUtils {
      * @return success Whether the call succeeded
      * @return returnData Return data from the call
      */
-    function functionCallWithValue(
-        address target,
-        uint256 value,
-        bytes memory data
-    ) internal returns (bool success, bytes memory returnData) {
+    function functionCallWithValue(address target, uint256 value, bytes memory data)
+        internal
+        returns (bool success, bytes memory returnData)
+    {
         validateContract(target);
-        
+
         (success, returnData) = target.call{value: value}(data);
         if (!success) revert CallFailed();
     }
@@ -98,12 +99,13 @@ library AddressUtils {
      * @return success Whether the call succeeded
      * @return returnData Return data from the call
      */
-    function functionStaticCall(
-        address target,
-        bytes memory data
-    ) internal view returns (bool success, bytes memory returnData) {
+    function functionStaticCall(address target, bytes memory data)
+        internal
+        view
+        returns (bool success, bytes memory returnData)
+    {
         validateContract(target);
-        
+
         (success, returnData) = target.staticcall(data);
         if (!success) revert CallFailed();
     }
@@ -116,15 +118,14 @@ library AddressUtils {
      * @return success Whether the call succeeded
      * @return returnData Return data from the call
      */
-    function functionDelegateCall(
-        address target,
-        bytes memory data,
-        mapping(address => bool) storage allowedTargets
-    ) internal returns (bool success, bytes memory returnData) {
+    function functionDelegateCall(address target, bytes memory data, mapping(address => bool) storage allowedTargets)
+        internal
+        returns (bool success, bytes memory returnData)
+    {
         validateContract(target);
-        
+
         if (!allowedTargets[target]) revert DelegateCallNotAllowed();
-        
+
         (success, returnData) = target.delegatecall(data);
         if (!success) revert CallFailed();
     }
@@ -213,17 +214,17 @@ library AddressUtils {
     function remove(address[] memory arr, address target) internal pure returns (address[] memory) {
         int256 index = indexOf(arr, target);
         if (index == -1) revert("Address not found in array");
-        
+
         address[] memory newArray = new address[](arr.length - 1);
         uint256 newIndex = 0;
-        
+
         for (uint256 i = 0; i < arr.length; i++) {
             if (i != uint256(index)) {
                 newArray[newIndex] = arr[i];
                 newIndex++;
             }
         }
-        
+
         return newArray;
     }
 
@@ -239,7 +240,7 @@ library AddressUtils {
      */
     function supportsInterface(address addr, bytes4 interfaceId) internal view returns (bool) {
         if (!isContract(addr)) return false;
-        
+
         try IERC165(addr).supportsInterface(interfaceId) returns (bool result) {
             return result;
         } catch {
@@ -276,7 +277,7 @@ library AddressUtils {
      * @param addr Address to check
      * @return isZeroAddr True if address is zero
      */
-    function isZeroAssembly(address addr) internal pure returns (bool) {
+    function isZeroAssembly(address addr) internal pure returns (bool isZeroAddr) {
         assembly {
             isZeroAddr := iszero(addr)
         }
@@ -287,7 +288,7 @@ library AddressUtils {
      * @param addr Address to check
      * @return isContractAddr True if address is a contract
      */
-    function isContractAssembly(address addr) internal view returns (bool) {
+    function isContractAssembly(address addr) internal view returns (bool isContractAddr) {
         assembly {
             isContractAddr := gt(extcodesize(addr), 0)
         }
@@ -298,7 +299,7 @@ library AddressUtils {
      * @param addr Address to check
      * @return codeSize Size of contract code
      */
-    function getCodeSize(address addr) internal view returns (uint256) {
+    function getCodeSize(address addr) internal view returns (uint256 codeSize) {
         assembly {
             codeSize := extcodesize(addr)
         }
@@ -308,8 +309,8 @@ library AddressUtils {
     // EIP-165 INTERFACE FOR ERC165 SUPPORT
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// @dev Interface for EIP-165 support check
-    interface IERC165 {
-        function supportsInterface(bytes4 interfaceId) external view returns (bool);
-    }
+    // /// @dev Interface for EIP-165 support check
+    // interface IERC165 {
+    //     function supportsInterface(bytes4 interfaceId) external view returns (bool);
+    // }
 }

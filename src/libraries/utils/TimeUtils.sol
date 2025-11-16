@@ -12,52 +12,52 @@ library BaobabTimeUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // CONSTANTS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Seconds in a day for time calculations
     uint256 internal constant SECONDS_PER_DAY = 24 * 60 * 60;
-    
+
     /// @dev Seconds in an hour for market session calculations
     uint256 internal constant SECONDS_PER_HOUR = 60 * 60;
-    
+
     /// @dev Seconds in a week for weekly settlements
     uint256 internal constant SECONDS_PER_WEEK = 7 * SECONDS_PER_DAY;
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // AFRICAN MARKET HOURS (UTC OFFSETS)
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Nigerian Stock Exchange trading hours (UTC+1)
-    uint256 internal constant NSE_OPEN_UTC = 8 * SECONDS_PER_HOUR;   // 8:00 AM UTC = 9:00 AM WAT
-    uint256 internal constant NSE_CLOSE_UTC = 15 * SECONDS_PER_HOUR;  // 3:00 PM UTC = 4:00 PM WAT
-    
+    uint256 internal constant NSE_OPEN_UTC = 8 * SECONDS_PER_HOUR; // 8:00 AM UTC = 9:00 AM WAT
+    uint256 internal constant NSE_CLOSE_UTC = 15 * SECONDS_PER_HOUR; // 3:00 PM UTC = 4:00 PM WAT
+
     /// @dev Johannesburg Stock Exchange trading hours (UTC+2)
-    uint256 internal constant JSE_OPEN_UTC = 7 * SECONDS_PER_HOUR;    // 7:00 AM UTC = 9:00 AM SAST
-    uint256 internal constant JSE_CLOSE_UTC = 15 * SECONDS_PER_HOUR;  // 3:00 PM UTC = 5:00 PM SAST
-    
+    uint256 internal constant JSE_OPEN_UTC = 7 * SECONDS_PER_HOUR; // 7:00 AM UTC = 9:00 AM SAST
+    uint256 internal constant JSE_CLOSE_UTC = 15 * SECONDS_PER_HOUR; // 3:00 PM UTC = 5:00 PM SAST
+
     /// @dev Nairobi Securities Exchange trading hours (UTC+3)
-    uint256 internal constant NAIROBI_OPEN_UTC = 6 * SECONDS_PER_HOUR;   // 6:00 AM UTC = 9:00 AM EAT
+    uint256 internal constant NAIROBI_OPEN_UTC = 6 * SECONDS_PER_HOUR; // 6:00 AM UTC = 9:00 AM EAT
     uint256 internal constant NAIROBI_CLOSE_UTC = 13 * SECONDS_PER_HOUR; // 1:00 PM UTC = 4:00 PM EAT
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // FUNDING RATE SCHEDULES
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Funding rate intervals for perpetual contracts (8 hours standard)
     uint256 internal constant FUNDING_INTERVAL = 8 * SECONDS_PER_HOUR;
-    
+
     /// @dev Daily settlement time for mark-to-market (4:00 PM UTC)
     uint256 internal constant DAILY_SETTLEMENT_UTC = 16 * SECONDS_PER_HOUR;
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     // ERRORS
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    
+
     /// @dev Reverts when time calculation would overflow uint256
     error BaobabTimeCalculationOverflow();
-    
+
     /// @dev Reverts when trading is attempted outside market hours
     error BaobabMarketClosed();
-    
+
     /// @dev Reverts when invalid time parameters are provided
     error BaobabInvalidTimeParameters();
 
@@ -179,9 +179,8 @@ library BaobabTimeUtils {
      * @return isOpen True if any Nigerian, South African, or Kenyan market is open
      */
     function baobabIsAnyAfricanMarketOpen(uint256 timestamp) internal pure returns (bool) {
-        return baobabIsNigerianMarketOpen(timestamp) ||
-               baobabIsSouthAfricanMarketOpen(timestamp) ||
-               baobabIsKenyanMarketOpen(timestamp);
+        return baobabIsNigerianMarketOpen(timestamp) || baobabIsSouthAfricanMarketOpen(timestamp)
+            || baobabIsKenyanMarketOpen(timestamp);
     }
 
     /**
@@ -192,7 +191,7 @@ library BaobabTimeUtils {
      */
     function baobabValidateAfricanMarketHours(uint256 timestamp, bytes32 marketRegion) internal pure {
         bool isOpen;
-        
+
         if (marketRegion == "NIGERIA") {
             isOpen = baobabIsNigerianMarketOpen(timestamp);
         } else if (marketRegion == "SOUTH_AFRICA") {
@@ -202,7 +201,7 @@ library BaobabTimeUtils {
         } else {
             isOpen = baobabIsAnyAfricanMarketOpen(timestamp);
         }
-        
+
         if (!isOpen) revert BaobabMarketClosed();
     }
 
@@ -211,15 +210,16 @@ library BaobabTimeUtils {
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
     // NOTE: These functions require MarketRegistry integration
-    // Uncomment and implement when MarketRegistry is available
-    
+    // To be uncommented and implemented when MarketRegistry is available
+
     /*
     /**
      * @notice Check if market is open using dynamic MarketRegistry data
      * @param market Address of the market contract to check
      * @return isOpen True if market is currently within trading hours
      * @dev Uses MarketRegistry for dynamic market hours management
-     *//*
+     */
+    /*
     function baobabIsMarketOpen(address market) internal view returns (bool) {
         MarketRegistry.MarketHours memory hours = MarketRegistry(marketRegistryAddress).getMarketHours(market);
         
@@ -235,7 +235,8 @@ library BaobabTimeUtils {
      * @notice Validate trading hours for specific market using MarketRegistry
      * @param market Address of the market contract to validate
      * @dev Reverts with BaobabMarketClosed if outside trading hours
-     *//*
+     */
+    /*
     function baobabValidateMarketHours(address market) internal view {
         if (!baobabIsMarketOpen(market)) {
             revert BaobabMarketClosed();

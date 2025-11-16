@@ -6,11 +6,11 @@ import "forge-std/Script.sol";
 contract SettleEvent is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        
+
         vm.startBroadcast(deployerPrivateKey);
-        
+
         // TODO: Implement deployment logic
-        
+
         vm.stopBroadcast();
     }
 }

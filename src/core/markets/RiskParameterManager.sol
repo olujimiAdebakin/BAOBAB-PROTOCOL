@@ -6,5 +6,5 @@ pragma solidity ^0.8.24;
  * @notice TODO: Add contract description
  */
 contract RiskParameterManager {
-    // TODO: Implement contract
+// TODO: Implement contract
 }

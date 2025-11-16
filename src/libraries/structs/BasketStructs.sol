@@ -13,16 +13,15 @@ import {CommonStructs} from "./CommonStructs.sol";
  *                                       BASKET STRUCTS
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
  */
-library BasketStructs{
-
-    using CommonStructs for CommonStructs.OrderType;
+library BasketStructs {
+    using CommonStructs for *;
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                       ENUMERATIONS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /**
      * @notice Type of basket product
-     * @dev ASSET_BASKET - Holds actual tokens (e.g., African Tech Index)
+     * @dev ASSET_BASKET - Holds actual tokens (e.g.ETF, Commodity, African Tech Index)
      * @dev ORDER_BASKET - Bundles pending OrderNFTs (e.g., Volatility Strategy Fund)
      */
     enum BasketType {
@@ -519,10 +518,7 @@ library BasketStructs{
      * @param maxDeviationBps Maximum allowed drift
      * @return bool True if rebalance needed
      */
-    function needsRebalance(
-        BasketComponent[] memory components,
-        uint16 maxDeviationBps
-    ) internal pure returns (bool) {
+    function needsRebalance(BasketComponent[] memory components, uint16 maxDeviationBps) internal pure returns (bool) {
         for (uint256 i = 0; i < components.length; i++) {
             if (calculateDrift(components[i]) > maxDeviationBps) {
                 return true;
