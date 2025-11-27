@@ -5,6 +5,8 @@ import {PositionManager} from "./PositionManager.sol";
 import {CommonStructs} from "../../libraries/structs/CommonStructs.sol";
 import {RoleRegistry} from "../../access/RoleRegistry.sol";
 import {AccessManager} from "../../access/AccessManager.sol";
+import {RateLimiter} from "../../security/RateLimiter.sol";
+import {RateLimitBuckets} from "../../libraries/utils/RateLimitBuckets.sol";
 
 /**
  * @title IAccessManager
@@ -38,11 +40,15 @@ contract FundingEngine {
     PositionManager public immutable positionManager;
     /// @notice Address of the AccessManager contract, used to verify keeper permissions.
     AccessManager public accessManager;
+    /// @notice Address of the RateLimiter contract, used to enforce rate limits on funding application.
+    RateLimiter public rateLimiter;
+
+    using RateLimitBuckets for *;
 
     /// @notice The absolute maximum funding rate allowed if not overridden by market config (0.3% per 8 hours).
     uint256 public constant MAX_FUNDING_RATE = 300;
     /// @notice The fixed duration for a funding calculation period (8 hours).
-    uint256 public constant FUNDING_PERIOD = 8 hours;
+    uint256 public constant FUNDING_PERIOD = 5 hours;
     /// @notice Constant for Basis Points (10,000) used for scaling percentages.
     uint256 public constant BASIS_POINTS = 10_000;
     /// @notice Constant for 1e18 precision, used in rate calculation for fixed-point math.
@@ -73,9 +79,10 @@ contract FundingEngine {
      * @param _positionManager The address of the PositionManager contract.
      * @param _accessManager The address of the AccessManager contract.
      */
-    constructor(address _positionManager, address _accessManager) {
+    constructor(address _positionManager, address _accessManager, address _rateLimiter) {
         positionManager = PositionManager(_positionManager);
         accessManager = AccessManager(_accessManager);
+        rateLimiter = RateLimiter(_rateLimiter);
     }
 
     /**
@@ -93,6 +100,8 @@ contract FundingEngine {
      * @return rateBps The calculated funding rate in basis points (BPS).
      */
     function applyFundingRate(bytes32 marketId) external onlyKeeper returns (int256 rateBps) {
+
+        rateLimiter.checkRateLimit(msg.sender, RateLimitBuckets.APPLY_FUNDING);
         // Destructure only the required market config components
         (
             , // maxLev (unused)
