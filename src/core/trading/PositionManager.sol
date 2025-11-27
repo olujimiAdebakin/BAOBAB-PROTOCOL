@@ -8,6 +8,7 @@ import {ICircuitBreaker} from "../../interfaces/ICircuitBreaker.sol";
 import {IEmergencyPauser} from "../../interfaces/IEmergencyPauser.sol";
 import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
 import {ModuleIds} from "../../libraries/utils/ModuleIds.sol";
+import {RateLimiter} from "../../security/RateLimiter.sol";
 
 /**
  * @title PositionManager
@@ -65,6 +66,8 @@ import {ModuleIds} from "../../libraries/utils/ModuleIds.sol";
 contract PositionManager is SecurityBase {
     ICircuitBreaker public circuitBreaker;
     IEmergencyPauser public emergencyPauser;
+    AutoDeleverageEngine public adlEngine;
+    RateLimiter public rateLimiter;
 
     using AddressUtils for address;
     using ModuleIds for *;
@@ -141,6 +144,9 @@ contract PositionManager is SecurityBase {
     /// @notice Mapping of trader address to their position IDs
     mapping(address => bytes32[]) public userPositions;
 
+    /// @notice Mapping of position ID to owner address
+    mapping(bytes32 => address) positionOwner;
+
     /// @notice Mapping of market ID to position IDs in that market
     mapping(bytes32 => bytes32[]) public marketPositions;
 
@@ -155,8 +161,8 @@ contract PositionManager is SecurityBase {
     /// @notice Mapping of trader address to their portfolio summary
     mapping(address => CommonStructs.Portfolio) public portfolios;
 
-    /// @notice Auto-deleverage engine for risk management
-    AutoDeleverageEngine public adlEngine;
+    // /// @notice Auto-deleverage engine for risk management
+    // AutoDeleverageEngine public adlEngine;
 
     /// @notice Oracle registry contract for price feeds
     address public oracleRegistry;
@@ -592,6 +598,10 @@ contract PositionManager is SecurityBase {
 
         positionId = keccak256(abi.encodePacked(trader, marketId, _positionIdCounter++, block.timestamp));
 
+        positionOwner[positionId] = trader;
+
+        userPositions[trader].push(positionId);
+
         uint256 liqPrice = _calculateLiquidationPrice(marketId, side, entryPrice, collateral, size);
 
         CommonStructs.Position memory pos = CommonStructs.Position({
@@ -1016,6 +1026,16 @@ contract PositionManager is SecurityBase {
     function getPosition(bytes32 positionId) external view returns (PositionData memory) {
         return positions[positionId];
     }
+    
+    /**
+     * @notice Get the owner of a position by ID
+     * @param positionId Unique position identifier
+     * @return Address of the position owner
+     */
+    function getPositionOwner(bytes32 positionId) external view returns (address) {
+    return positionOwner[positionId];
+}
+
 
     /**
      * @notice Get position size by ID

@@ -9,6 +9,9 @@ import {LiquidationEngine} from "../LiquidationEngine.sol";
 import {AddressUtils} from "../../../libraries/utils/AddressUtils.sol";
 import {ICircuitBreaker} from "../../../interfaces/ICircuitBreaker.sol";
 import {IEmergencyPauser} from "../../../interfaces/IEmergencyPauser.sol";
+import {ModuleIds} from "../../../libraries/utils/ModuleIds.sol";
+import {RateLimitBuckets} from "../../../libraries/utils/RateLimitBuckets.sol";
+import {RateLimiter} from "../../../security/RateLimiter.sol";
 
 /**
  * @title AutoDeleverageEngine
@@ -57,8 +60,11 @@ contract AutoDeleverageEngine is SecurityBase {
     LiquidationEngine public liquidationEngine;
     ICircuitBreaker public circuitBreaker;
     IEmergencyPauser public emergencyPauser;
+    RateLimiter public rateLimiter;
 
     using AddressUtils for *;
+    using ModuleIds for *;
+    using RateLimitBuckets for *;
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                          STRUCTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -180,7 +186,7 @@ contract AutoDeleverageEngine is SecurityBase {
      * @dev Separation of concerns: LiquidationEngine handles normal liquidations, ADL handles extreme cases
      * @dev Set during initialization and immutable thereafter for security
      */
-    address public liquidationEngine;
+    // address public liquidationEngine;
 
     /**
      * @notice Insurance vault contract address
@@ -335,12 +341,13 @@ contract AutoDeleverageEngine is SecurityBase {
         address _liquidationEngine,
         address _insuranceVault,
         address _positionManager,
-        address _liquidationEngine
+        address _ratelimter
+        // address _liquidationEngine
     ) {
         // Zero-address guard — prevents deployment with invalid core contracts
         if (
             _admin == address(0) || _liquidationEngine == address(0) || _insuranceVault == address(0)
-                || _positionManager == address(0)
+                || _positionManager == address(0) || _ratelimter == address(0)
         ) {
             revert ADL__InvalidConfig();
         }
@@ -349,13 +356,15 @@ contract AutoDeleverageEngine is SecurityBase {
         _liquidationEngine.validateContract();
         _insuranceVault.validateContract();
         _positionManager.validateContract();
+        _ratelimter.validateContract();
 
+
+        rateLimiter = RateLimiter(_ratelimter);
         positionManager = IPositionManager(_positionManager);
         if (_positionManager == address(0)) revert ADL__InvalidConfig();
-
         BaobabAdmin = _admin;
         insuranceVault = _insuranceVault;
-        liquidationEngine = _liquidationEngine;
+        liquidationEngine = LiquidationEngine(_liquidationEngine);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -364,13 +373,13 @@ contract AutoDeleverageEngine is SecurityBase {
 
     modifier onlyLiquidationEngine() {
         msg.sender.isZero();
-        if (msg.sender != liquidationEngine) revert ADL__OnlyLiquidationEngine();
+        if (msg.sender != address(liquidationEngine)) revert ADL__OnlyLiquidationEngine();
         _;
     }
 
     modifier onlyPositionManager() {
         msg.sender.isZero();
-        if (msg.sender != positionManager) revert ADL__onlyPositionManager();
+        if (msg.sender !=address(positionManager)) revert ADL__onlyPositionManager();
         _;
     }
 
@@ -435,6 +444,13 @@ contract AutoDeleverageEngine is SecurityBase {
         uint256 sizeToClose,
         uint256 executionPrice
     ) external onlyLiquidationEngine whenNotEmergencyPaused nonReentrant returns (bool success) {
+
+         CommonStructs.PositionData memory posData = positionManager.getPosition(liquidatedPosition);
+
+        address trader = posData.position.trader;
+
+          rateLimiter.checkRateLimit(trader, RateLimitBuckets.EXECUTE_ADL);
+
         ADLConfig memory config = adlConfigs[marketId];
 
         if (!config.isEnabled) revert ADL__ADLNotEnabled();
@@ -526,7 +542,13 @@ contract AutoDeleverageEngine is SecurityBase {
         CommonStructs.Side side,
         uint256 unrealizedPnL,
         uint16 leverage
-    ) external onlyPositionManager whenCircuitNotActive whenNotEmergencyPaused {
+    ) external onlyPositionManager  whenNotEmergencyPaused whenCircuitNotActive(marketId){
+
+        // CommonStructs.PositionData memory posData = positionManager.getPosition(positionId);
+
+        // address user = posData.position.trader;
+
+        // rateLimiter.checkRateLimit(user, keccak256(abi.encodePacked("UPDATE_ADL_QUEUE")));
         // Only include profitable positions in ADL queue
         if (unrealizedPnL == 0) {
             _removePositionFromQueue(marketId, positionId, side);
@@ -575,7 +597,7 @@ contract AutoDeleverageEngine is SecurityBase {
         external
         onlyPositionManager
         whenNotEmergencyPaused
-        whenCircuitNotActive
+       whenCircuitNotActive(marketId)
     {
         _removePositionFromQueue(marketId, positionId, side);
     }

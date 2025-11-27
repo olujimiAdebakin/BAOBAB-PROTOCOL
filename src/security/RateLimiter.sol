@@ -254,7 +254,11 @@ contract RateLimiter {
 
         // Liquidity operations
         _setTieredLimit("ADD_LIQUIDITY", 5, 15, 50, 200, 1 minutes);
-        _setTieredLimit("REMOVE_LIQUIDITY", 5, 15, 50, 200, 1 minutes);
+         _setTieredLimit("REMOVE_LIQUIDITY", 5, 15, 50, 200, 1 minutes);
+
+        // Funding application
+        _setTieredLimit("APPLY_FUNDING", 10, 20, 50, 200, 1 minutes);
+      
 
         // Order NFT operations
         _setTieredLimit("BORROW_AGAINST_ORDER", 3, 10, 30, 100, 1 hours);
@@ -275,6 +279,7 @@ contract RateLimiter {
 
         // Risk management operations
         _setTieredLimit("LIQUIDATE_POSITION", 10, 25, 80, 300, 1 minutes);
+        _setTieredLimit("EXECUTE_ADL", 5, 10, 30, 100, 1 minutes);
         _setTieredLimit("EXECUTE_ADL", 5, 10, 30, 100, 1 minutes);
 
         // Settlement operations
@@ -638,10 +643,11 @@ contract RateLimiter {
         view
         returns (uint256)
     {
+        UserTier currentTier = userTier[user];
+
         // Keepers use specialized limits
         if (isKeeper[user]) {
             TieredRateLimit memory keeperLimit = keeperLimits[operationId];
-            UserTier currentTier = userTier[user];
 
             if (currentTier == UserTier.MarketMaker) return keeperLimit.marketMaker;
             if (currentTier == UserTier.VIP) return keeperLimit.vip;
@@ -650,7 +656,6 @@ contract RateLimiter {
         }
 
         // Regular users use standard tiered limits
-        UserTier currentTier = userTier[user];
         if (currentTier == UserTier.MarketMaker) return limits.marketMaker;
         if (currentTier == UserTier.VIP) return limits.vip;
         if (currentTier == UserTier.Premium) return limits.premium;
