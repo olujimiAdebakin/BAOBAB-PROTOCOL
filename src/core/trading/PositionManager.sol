@@ -375,7 +375,7 @@ contract PositionManager is SecurityBase {
      */
     modifier whenCircuitActivated(bytes32 marketId) {
         // Optionally validate market ID is nonzero
-        // marketId.validateNotZero();
+        marketId.validateNotZero();
 
         // Prevent any operation if system-wide or market-specific breaker is active
         if (circuitBreaker.globalHalt() || circuitBreaker.isCircuitTripped(marketId)) {

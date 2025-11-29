@@ -473,6 +473,15 @@ library CommonStructs {
     int256 makerRebateBps;  // negative = rebate paid to maker
 }
 
+  struct FeeStats {
+        uint256 totalLpFees;
+        uint256 totalInsuranceFees;
+        uint256 totalTreasuryFees;
+        uint256 totalStakerFees;
+        uint256 totalBurned;
+        uint256 failedDistributions;
+    }
+
 /**
     * @notice User tier for fee discounts
     * @param minVolume30d Minimum 30-day trading volume (18 decimals)

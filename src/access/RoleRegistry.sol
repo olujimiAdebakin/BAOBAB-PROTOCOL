@@ -82,6 +82,21 @@ library RoleRegistry {
      */
     bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER_ROLE");
 
+    
+    // bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER");
+
+    /**
+     * @notice Treasury manager - manage protocol treasury funds
+     * @dev Can allocate funds, invest, manage reserves
+     */
+    bytes32 public constant TREASURY_ROLE = keccak256("TREASURY_MANAGER_ROLE");
+
+    /**
+     * @notice Emergency admin - highest emergency authority
+     * @dev Can override pausers, unpause modules in emergencies
+     */
+    bytes32 public constant EMERGENCY_ADMIN = keccak256("EMERGENCY_ADMIN");
+
     /**
      * @notice Basket manager - manage tokenized baskets
      * @dev Can create baskets, rebalance, add/remove components
@@ -171,6 +186,8 @@ library RoleRegistry {
         if (role == TRADING_OPERATOR_ROLE) return 40;
         if (role == VAULT_OPERATOR_ROLE) return 40;
         if (role == FEE_MANAGER_ROLE) return 40;
+        if (role == TREASURY_ROLE) return 40;
+        if (role == EMERGENCY_ADMIN) return 35;
         if (role == BASKET_MANAGER_ROLE) return 30;
         if (role == MARKET_MAKER_ROLE) return 30;
         if (role == EVENT_SETTLER_ROLE) return 30;
@@ -210,13 +227,15 @@ library RoleRegistry {
         roles[5] = ORACLE_UPDATER_ROLE;
         roles[6] = MARKET_MAKER_ROLE;
         roles[7] = FEE_MANAGER_ROLE;
-        roles[8] = BASKET_MANAGER_ROLE;
-        roles[9] = EVENT_SETTLER_ROLE;
-        roles[10] = PAUSER_ROLE;
-        roles[11] = UPGRADER_ROLE;
-        roles[12] = TRADING_OPERATOR_ROLE;
-        roles[13] = VAULT_OPERATOR_ROLE;
-        roles[14] = RISK_MANAGER_ROLE;
+        roles[8] = TREASURY_ROLE;
+        roles[9] = EMERGENCY_ADMIN;
+        roles[10] = BASKET_MANAGER_ROLE;
+        roles[11] = EVENT_SETTLER_ROLE;
+        roles[12] = PAUSER_ROLE;
+        roles[13] = UPGRADER_ROLE;
+        roles[14] = TRADING_OPERATOR_ROLE;
+        roles[15] = VAULT_OPERATOR_ROLE;
+        roles[16] = RISK_MANAGER_ROLE;
     }
 
     /**

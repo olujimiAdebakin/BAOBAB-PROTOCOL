@@ -154,6 +154,8 @@ contract AccessManager is SecurityBase {
         _internalSetRoleAdmin(RoleRegistry.ORACLE_UPDATER_ROLE, RoleRegistry.ADMIN_ROLE);
         _internalSetRoleAdmin(RoleRegistry.MARKET_MAKER_ROLE, RoleRegistry.ADMIN_ROLE);
         _internalSetRoleAdmin(RoleRegistry.FEE_MANAGER_ROLE, RoleRegistry.ADMIN_ROLE);
+        _internalSetRoleAdmin(RoleRegistry.TREASURY_ROLE, RoleRegistry.ADMIN_ROLE);
+        _internalSetRoleAdmin(RoleRegistry.EMERGENCY_ADMIN, RoleRegistry.ADMIN_ROLE);
         _internalSetRoleAdmin(RoleRegistry.BASKET_MANAGER_ROLE, RoleRegistry.ADMIN_ROLE);
         _internalSetRoleAdmin(RoleRegistry.EVENT_SETTLER_ROLE, RoleRegistry.ADMIN_ROLE);
         _internalSetRoleAdmin(RoleRegistry.TRADING_OPERATOR_ROLE, RoleRegistry.ADMIN_ROLE);
