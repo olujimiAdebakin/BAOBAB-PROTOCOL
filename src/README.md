@@ -1,269 +1,171 @@
-# BAOBAB Protocol: Perpetual Decentralized Exchange (perp-dex) 🌐
+# BAOBAB Protocol: Decentralized Perpetual Exchange 🌳
 
-## Overview
-The BAOBAB Protocol is an ambitious, high-performance decentralized exchange (DEX) designed for perpetual futures, spot trading, and advanced event derivatives, with a strong focus on security, capital efficiency, and adaptability to global markets, including underserved African regions. Built on Solidity, this protocol features a robust access control system, a multi-layered security framework including circuit breakers and rate limiting, and sophisticated trading mechanisms like an Auto-Deleveraging (ADL) engine. While currently in a foundational development phase, the architecture is designed for a comprehensive suite of DeFi products.
+The BAOBAB Protocol is an ambitious and comprehensive decentralized perpetual exchange designed for robust, secure, and efficient derivatives trading. Engineered with a focus on African markets, it offers a sophisticated suite of features including role-based access control, advanced risk management with circuit breakers and auto-deleverage mechanisms, and highly precise fixed-point arithmetic for financial calculations. This protocol aims to provide a resilient and scalable infrastructure for on-chain perpetuals, spot trading, event derivatives, and tokenized baskets.
 
 ## Features
-- **Role-Based Access Control**: Hierarchical access management (Owner, Admin, Guardian, Keeper, Liquidator, etc.) for granular protocol operations and governance.
-- **Advanced Security Modules**:
-  - **Circuit Breaker**: Automatically halts trading during extreme price deviations, volume spikes, or liquidation cascades to prevent systemic risk.
-  - **Emergency Pauser**: Granular pausing capabilities for individual modules or the entire protocol, with multi-sig and timelock integration.
-  - **Rate Limiter**: Multi-layered protection against spam, DDoS, and economic attacks using token bucket, tiered limits, and gas consumption tracking.
-  - **Reentrancy Guard**: Standardized protection against reentrancy vulnerabilities across all core contracts.
-- **Perpetual Futures Trading**: Core infrastructure for managing leveraged positions, including dynamic margin requirements, liquidation, and funding rate mechanisms.
-- **Auto-Deleveraging (ADL) Engine**: A sophisticated risk management mechanism that automatically deleverages profitable opposing positions to cover liquidation shortfalls, protecting the insurance fund.
-- **Tokenized Baskets & Indices**: Framework for creating and managing tokenized asset baskets and order baskets, supporting various rebalancing strategies (manual, scheduled, threshold, dynamic).
-- **Comprehensive Libraries**: Gas-optimized Solidity libraries for fixed-point math, percentage calculations, array utilities, sorting algorithms, and statistical analysis.
-- **Modular & Extensible Architecture**: Designed with clearly separated concerns for markets, trading engines, oracles, fees, and vaults, allowing for future expansion.
-- **Oracle Integration**: Unified interface for various price feeds (Chainlink, Pyth, TWAP, Trusted, Computed Oracles) to ensure robust and decentralized pricing.
+
+- **Robust Access Control**: Hierarchical role-based access control system (`AccessManager`) ensuring secure management of protocol operations.
+- **Protocol Governance**: Mechanisms for protocol ownership, treasury management, and emergency controls (`ProtocolOwner`).
+- **Advanced Risk Management**: Integrated `CircuitBreaker` for automatic trading halts during extreme market volatility and an `EmergencyPauser` for granular module control.
+- **Multi-Layer Rate Limiting**: Production-grade `RateLimiter` protecting against spam, DoS, and economic attacks with tiered limits and gas consumption tracking.
+- **Perpetual Position Management**: Core `PositionManager` handles opening, modifying, closing, and liquidating perpetual futures positions with dynamic margin and PnL tracking.
+- **Automated Deleveraging (ADL)**: `AutoDeleverageEngine` automatically deleverages profitable opposing positions to protect the insurance fund during extreme market events.
+- **Accurate Funding Rates**: `FundingEngine` calculates and applies periodic funding rates based on Open Interest imbalance.
+- **High-Precision Mathematics**: `FixedPointMath` library utilizing Q64.96 format for accurate and gas-efficient financial calculations.
+- **Percentage Calculations**: `PercentageMath` library for precise basis point operations in fees, interest, and risk parameters.
+- **Statistical Analysis**: `Statistics` library for advanced risk management and analytics, including mean, standard deviation, and Value at Risk (VaR).
+- **Gas-Optimized Utilities**: Libraries like `ArrayUtils`, `AddressUtils`, and `TimeUtils` provide efficient common operations.
+- **Modular Architecture**: Clearly separated concerns across contracts like `BasketEngine`, `FeeCalculator`, `OracleRegistry`, and various routers.
+- **Tokenized Assets**: Support for ERC-20 `BAOBABToken`, `BasketShareToken`, `VaultShareToken`, and ERC-721 `BasketNFT`, `OrderNFT` for flexible product offerings.
 
 ## Getting Started
-To set up the BAOBAB Protocol locally for development or testing, follow these steps.
 
 ### Installation
-✨ Clone the repository:
-```bash
-git clone https://github.com/olujimiAdebakin/BAOBAB-PROTOCOL.git
-cd BAOBAB-PROTOCOL
-```
 
-⚙️ Install Hardhat (or Foundry) and project dependencies. For Hardhat:
-```bash
-npm install # or yarn install
-```
-Or if using Foundry:
-```bash
-forge install
-```
+To get a local copy of the BAOBAB Protocol up and running, follow these steps.
 
-🚀 Compile the smart contracts:
-For Hardhat:
-```bash
-npx hardhat compile
-```
-For Foundry:
-```bash
-forge build
-```
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/olujimiAdebakin/BAOBAB-PROTOCOL.git
+    cd BAOBAB-PROTOCOL
+    ```
 
-🧪 Run tests:
-For Hardhat:
-```bash
-npx hardhat test
-```
-For Foundry:
-```bash
-forge test
-```
+2.  **Install Foundry**:
+    This project is built with Solidity and is best developed and tested using Foundry. If you don't have Foundry installed, run:
+    ```bash
+    curl -L https://foundry.paradigm.xyz | bash
+    foundryup
+    ```
+
+3.  **Install Dependencies**:
+    Navigate to the project root and install the necessary Solidity dependencies, typically OpenZeppelin contracts.
+    ```bash
+    forge install
+    ```
+
+4.  **Build Contracts**:
+    Compile the smart contracts using `forge build`:
+    ```bash
+    forge build
+    ```
 
 ### Environment Variables
-The protocol relies on several addresses and parameters set at deployment or by the protocol administrator. These are typically passed as constructor arguments or set via administrative functions post-deployment.
 
-*   `_admin`: `address` - Initial protocol administrator for core contracts (e.g., `AccessManager`, `EmergencyPauser`, `CircuitBreaker`, `PositionManager`).
-*   `_multisig`: `address` - (For `EmergencyPauser`) An address designated for multi-signature governance actions.
-*   `_accessManager`: `address` - (For `ProtocolOwner`) The deployed `AccessManager` contract address.
-*   `_treasury`: `address` - (For `ProtocolOwner`) The protocol's designated treasury address.
-*   `_insuranceVault`: `address` - (For `ProtocolOwner`, `AutoDeleverageEngine`) The protocol's insurance fund vault address.
-*   `_feeRecipient`: `address` - (For `ProtocolOwner`) The address designated to receive protocol fees.
-*   `_positionManager`: `address` - (For `FundingEngine`, `AutoDeleverageEngine`) The deployed `PositionManager` contract address.
-*   `_oracleRegistry`: `address` - (For `PositionManager`) The deployed `OracleRegistry` contract address.
-*   `_adlEngine`: `address` - (For `PositionManager`) The deployed `AutoDeleverageEngine` contract address.
-*   `_fundingEngine`: `address` - (For `PositionManager`) The deployed `FundingEngine` contract address.
-*   `_circuitBreaker`: `address` - (For `PositionManager`) The deployed `CircuitBreaker` contract address.
-*   `_emergencyPauser`: `address` - (For `PositionManager`) The deployed `EmergencyPauser` contract address.
+The project will likely require environment variables for deployment and interaction (e.g., RPC URLs, private keys). While specific `.env` examples are not provided in the source code, you would typically need to set up a `.env` file similar to this:
 
-## API Documentation
-
-The BAOBAB Protocol is a suite of Solidity smart contracts deployed on the Ethereum Virtual Machine (EVM). Interaction occurs via transaction calls to contract addresses or reading public state variables. Below are examples of key external interfaces.
-
-### Base Contract Interactions
-Interactions with BAOBAB Protocol contracts are direct Solidity function calls. Each function defines its payload and expected response.
-
-### Endpoints (Key Contract Functions)
-
-#### `FUNCTION CALL` `AccessManager.grantRole(bytes32 role, address account)`
-**Description**: Grants a specified role to a target account. Only an account with the `adminRole` for the given `role` can execute this.
-**Request**:
-```solidity
-// Example: Granting ADMIN_ROLE to a new address
-accessManager.grantRole(RoleRegistry.ADMIN_ROLE, 0xAbC...123);
+```ini
+# Ethereum Virtual Machine (EVM) RPC URL
+RPC_URL=https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID
+PRIVATE_KEY=YOUR_DEPLOYER_PRIVATE_KEY
+ETHERSCAN_API_KEY=YOUR_ETHERSCAN_API_KEY # For contract verification
 ```
-**Parameters**:
-- `role`: `bytes32` - The identifier of the role to grant (e.g., `RoleRegistry.ADMIN_ROLE`).
-- `account`: `address` - The address of the account to which the role will be granted.
-**Response**:
-*   No direct return value. Emits a `RoleGranted` event on success.
-**Errors**:
-- `AccessManager__UnauthorizedRoleAdmin()`: If the caller does not hold the necessary administrative role for `role`.
-- `AccessManager__AlreadyHasRole()`: If `account` already possesses the `role`.
-- `AccessManager__InvalidAddress()`: If `account` is the zero address.
-
-#### `FUNCTION CALL` `PositionManager.openPosition(address trader, bytes32 marketId, CommonStructs.Side side, uint256 size, uint256 collateral, uint256 entryPrice, uint16 leverage)`
-**Description**: Opens a new perpetual trading position for a given trader on a specific market. Performs comprehensive risk checks including initial margin and max leverage.
-**Request**:
-```solidity
-// Example: Opening a 10x LONG position on BTC-USD
-positionManager.openPosition(
-    0xDef...456, // trader address
-    keccak256("BTC-USD"), // marketId
-    CommonStructs.Side.LONG, // side
-    1 ether, // size (1 BTC, assuming 1e18 decimals)
-    0.005 ether, // collateral (e.g., 0.005 ETH)
-    30000 ether, // entryPrice ($30,000)
-    10 // leverage (10x)
-);
-```
-**Parameters**:
-- `trader`: `address` - The address of the user opening the position.
-- `marketId`: `bytes32` - The unique identifier of the market.
-- `side`: `CommonStructs.Side` - The direction of the position (`LONG` or `SHORT`).
-- `size`: `uint256` - The notional size of the position in base asset units (e.g., BTC, ETH), scaled to 18 decimals.
-- `collateral`: `uint256` - The collateral amount provided in quote asset units (e.g., USD, USDC), scaled to 18 decimals.
-- `entryPrice`: `uint256` - The entry price of the position, scaled to 18 decimals.
-- `leverage`: `uint16` - The leverage multiplier for the position (e.g., `10` for 10x).
-**Response**:
-- `positionId`: `bytes32` - The unique identifier for the newly created position. Emits a `PositionOpened` event.
-**Errors**:
-- `PositionManager__OnlyTradingEngine()`: If the caller is not the authorized `tradingEngine`.
-- `PositionManager__CircuitBroken()`: If the market or global circuit breaker is active.
-- `PositionManager__Paused()`: If the protocol or `PositionManager` module is paused.
-- `PositionManager__InvalidSize()`: If `size` is zero or invalid.
-- `PositionManager__InsufficientCollateral()`: If `collateral` is zero or insufficient to meet initial margin.
-- `PositionManager__MarketNotConfigured()`: If `marketId` is not configured or inactive.
-- `PositionManager__LeverageExceedsMax()`: If `leverage` exceeds the market's maximum allowed.
-- `PositionManager__InsufficientInitialMargin()`: If `collateral` does not meet the initial margin requirement.
-
-#### `FUNCTION CALL` `AutoDeleverageEngine.executeADL(bytes32 marketId, bytes32 liquidatedPosition, CommonStructs.Side side, uint256 sizeToClose, uint256 executionPrice)`
-**Description**: Triggers the Auto-Deleveraging (ADL) process to force-close profitable opposing positions when a liquidation cannot be fully covered by the insurance fund.
-**Request**:
-```solidity
-// Example: ADL triggered for a failed LONG liquidation on BTC-USD
-adlEngine.executeADL(
-    keccak256("BTC-USD"), // marketId
-    0xAAAA...BBBB, // liquidatedPositionId
-    CommonStructs.Side.LONG, // side of liquidated position (ADL targets SHORTs)
-    5 ether, // sizeToClose (e.g., 5 BTC notional)
-    28000 ether // executionPrice ($28,000)
-);
-```
-**Parameters**:
-- `marketId`: `bytes32` - The identifier of the market where ADL is triggered.
-- `liquidatedPosition`: `bytes32` - The unique ID of the position that failed to liquidate normally.
-- `side`: `CommonStructs.Side` - The side of the `liquidatedPosition` (`LONG` or `SHORT`). ADL will target positions on the *opposite* side.
-- `sizeToClose`: `uint256` - The total notional size that needs to be covered by ADL, scaled to 18 decimals.
-- `executionPrice`: `uint256` - The price at which deleveraged positions will be closed, scaled to 18 decimals.
-**Response**:
-- `success`: `bool` - True if the ADL process successfully covered the `sizeToClose`, false otherwise. Emits `ADLTriggered` and `PositionDeleveraged` events.
-**Errors**:
-- `ADL__OnlyLiquidationEngine()`: If the caller is not the authorized `liquidationEngine`.
-- `ADL__ADLNotEnabled()`: If ADL is disabled for the specified `marketId`.
-- `ADL_ENGINE__Paused()`: If the ADL engine or protocol is paused.
-- `ADL__CircuitActive()`: If the circuit breaker is active for the market.
-- `ADL__InsufficientCandidates()`: If there are not enough profitable positions on the opposing side in the ADL queue to cover `sizeToClose`.
 
 ## Usage
 
-### Smart Contract Deployment
-To deploy the BAOBAB Protocol, you'll typically use a deployment script with Hardhat or Foundry. The order of deployment is crucial due to inter-contract dependencies. A recommended deployment flow:
+This project primarily consists of smart contracts designed to be deployed onto an EVM-compatible blockchain. Interaction involves calling public functions of these deployed contracts.
 
-1.  **Libraries**: Deploy `FixedPointMath`, `PercentageMath`, `Statistics`, `ArrayUtils`, `SortUtils`, `AddressUtils`, `ModuleIds`, `TimeUtils`, `SafeTransfer`. (These are `library` contracts or `abstract` contracts, so they might not need direct deployment but are linked).
-2.  **Core Security**: Deploy `SecurityBase` (abstract), `RoleRegistry` (library), then `AccessManager`.
-3.  **Owner & Pauser**: Deploy `EmergencyPauser` (with `_admin`, `_multisig`) and `CircuitBreaker` (with `_admin`). Then deploy `ProtocolOwner` (with `_accessManager`, `_treasury`, `_insuranceVault`, `_feeRecipient`).
-4.  **Trading & Risk Infrastructure**: Deploy `PositionManager` (with addresses for `_admin`, `_oracleRegistry`, `_adlEngine`, `_fundingEngine`, `_circuitBreaker`, `_emergencyPauser`).
-5.  **Engines**: Deploy `FundingRateEngine` (with `_positionManager`, `_accessManager`), `AutoDeleverageEngine` (with `_admin`, `_liquidationEngine`, `_insuranceVault`, `_positionManager`).
-6.  **Set Dependencies**: Crucially, use administrative functions (e.g., `PositionManager.setTradingEngine`, `setLiquidationEngine`, `setFundingEngine`) to link the deployed contracts together.
+### Deployment (Conceptual)
 
-### Example Interaction: Configuring a Market and Opening a Position
+Assuming you have your environment variables set and contracts compiled, you would typically deploy using `forge script` or a similar tool:
 
-Let's assume `AccessManager` and `PositionManager` are deployed.
+```bash
+# Example deployment of AccessManager
+forge script script/AccessManagerDeploy.s.sol:AccessManagerDeploy --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --verify
+```
 
-1.  **Set Market Risk Configuration**: As `BaobabAdmin`, define the risk parameters for a new market.
-    ```solidity
-    // In a Hardhat script or direct contract interaction:
-    bytes32 btcUsdMarketId = keccak256("BTC-USD");
-    positionManager.setMarketRiskConfig(
-        btcUsdMarketId,
-        PositionManager.LiquidityTier.HIGH, // e.g., BTC/ETH
-        50,  // maintenanceMarginBps = 0.5%
-        100, // initialMarginBps = 1%
-        100  // maxLeverage = 100x
-    );
-    ```
+### Interacting with Contracts
 
-2.  **Set Trading Engine**: As `BaobabAdmin`, authorize the `TradingEngine` (once implemented) to interact with `PositionManager`.
-    ```solidity
-    // Assuming tradingEngineAddress is the deployed TradingRouter/TradingEngine
-    positionManager.setTradingEngine(tradingEngineAddress);
-    ```
+After deployment, you can interact with the contracts using tools like `cast` (from Foundry), web3.js/ethers.js in a dApp, or through a block explorer.
 
-3.  **Open a Position**: A user (or `TradingEngine` on their behalf) can now open a position.
-    ```solidity
-    // This call would typically come from the TradingRouter or a wrapper contract
-    // For demonstration, assume direct call (but in reality, TradingEngine would call this)
-    address trader = 0xUserWalletAddress;
-    uint256 size = 10 ether; // 10 units of BTC
-    uint256 collateral = 0.5 ether; // 0.5 ETH collateral
-    uint256 entryPrice = 60000 ether; // BTC @ $60,000
-    uint16 leverage = 20; // 20x leverage
+#### Example: Granting a Role via AccessManager
 
-    positionManager.openPosition(
-        trader,
-        btcUsdMarketId,
-        CommonStructs.Side.LONG,
-        size,
-        collateral,
-        entryPrice,
-        leverage
-    );
-    ```
+To grant a role (e.g., `ADMIN_ROLE`) to an address via the `AccessManager` contract, you would call the `grantRole` function.
 
-This detailed architecture facilitates a robust and secure DeFi trading environment, allowing for complex financial instruments while prioritizing user safety and protocol stability.
+```bash
+# First, get the role's keccak256 hash (e.g., from RoleRegistry)
+ADMIN_ROLE_HASH="0x..." # Value for keccak256("ADMIN_ROLE")
 
-## Features List
-*   **Decentralized Access Control**: Granular, hierarchical role management to secure critical protocol functions and ensure operational integrity.
-*   **Comprehensive Security Layers**: Integration of `CircuitBreaker`, `EmergencyPauser`, and `RateLimiter` to safeguard against market volatility, external attacks, and governance exploits.
-*   **Perpetual Futures Engine**: Core logic for managing leveraged positions, margin, PnL calculation, and dynamic liquidation processes.
-*   **Automated Risk Management (ADL)**: Proactive Auto-Deleveraging system to socialize liquidation losses among profitable traders, protecting the insurance fund.
-*   **Modular Architecture**: Clearly defined contract roles and interfaces enable independent development, upgrades, and audits of protocol components.
-*   **High-Precision Math Libraries**: Custom `FixedPointMath` and `PercentageMath` for accurate and gas-efficient financial calculations.
-*   **Data Structure Optimization**: Extensive use of `structs` and internal `mappings` with gas-efficient array utilities (`ArrayUtils`, `SortUtils`) for efficient state management.
-*   **Dynamic Market Configuration**: Flexible parameters for setting market-specific risk tiers, leverage limits, and margin requirements.
-*   **Extensible Oracle Framework**: Support for various oracle adapters to provide reliable and decentralized price feeds for all markets.
-*   **Governance Integration**: Designed to be upgradable and configurable via a future DAO, ensuring community-driven evolution.
+# Call the grantRole function on the deployed AccessManager
+cast send <ACCESS_MANAGER_ADDRESS> "grantRole(bytes32,address)" "$ADMIN_ROLE_HASH" <TARGET_ADDRESS> --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+```
+
+#### Example: Opening a Position via PositionManager
+
+To open a new perpetual position, you would interact with the `PositionManager` via your `TradingEngine` (which acts as a router).
+
+```bash
+# This is a conceptual example, actual interaction would be through the TradingRouter/TradingEngine
+# assuming they are deployed and authorized.
+cast send <TRADING_ENGINE_ADDRESS> "openPosition(address,bytes32,uint8,uint256,uint256,uint256,uint16)" \
+"0x<TRADER_ADDRESS>" \
+"0x<MARKET_ID>" \
+"0" \
+"1000000000000000000" \
+"100000000000000000000" \
+"50000000000000000000000" \
+"10" \
+--rpc-url $RPC_URL --private-key $PRIVATE_KEY
+```
+*Note: The `openPosition` function specifically mentions `onlyTradingEngine` modifier, meaning a direct call from an arbitrary `msg.sender` would revert. The example above is illustrative of the *parameters* passed to a trading mechanism.*
 
 ## Technologies Used
-| Technology         | Category           | Description                                                                     | Link                                                                      |
-| :----------------- | :----------------- | :------------------------------------------------------------------------------ | :------------------------------------------------------------------------ |
-| **Solidity**       | Smart Contract     | Primary language for developing secure and robust decentralized applications.   | [soliditylang.org](https://soliditylang.org/)                             |
-| **Hardhat / Foundry** | Development Tools  | Development environment for compiling, testing, and deploying Solidity contracts. | [hardhat.org](https://hardhat.org/) / [getfoundry.sh](https://getfoundry.sh/) |
-| **OpenZeppelin Contracts** | Libraries        | Standard, tested smart contracts for security and common patterns (e.g., ERC20, IERC165). | [openzeppelin.com/contracts](https://docs.openzeppelin.com/contracts/4.x/) |
-| **BUSL-1.1 License** | Licensing          | Business Source License for controlled initial use, then open-source.           | [spdx.org/licenses/BUSL-1.1.html](https://spdx.org/licenses/BUSL-1.1.html) |
-| **Ethereum Virtual Machine (EVM)** | Runtime Environment | The runtime environment for smart contracts in the Ethereum ecosystem.          | [ethereum.org/en/developers/docs/evm](https://ethereum.org/en/developers/docs/evm/) |
-| **IPFS**           | Storage            | Decentralized storage for off-chain metadata (e.g., event descriptions).        | [ipfs.io](https://ipfs.io/)                                               |
-| **Chainlink / Pyth** | Oracles            | Decentralized oracle networks for reliable price data feeds.                    | [chain.link](https://chain.link/) / [pyth.network](https://pyth.network/) |
+
+| Technology         | Description                                                          |
+| :----------------- | :------------------------------------------------------------------- |
+| **Solidity**       | Primary language for smart contract development.                     |
+| **Foundry**        | Fast, customizable, and gas-efficient toolkit for testing & deployment. |
+| **OpenZeppelin**   | Libraries for secure smart contract development.                     |
+| **EVM Chains**     | Designed for deployment on any Ethereum Virtual Machine compatible blockchain. |
 
 ## Contributing
-We welcome contributions to the BAOBAB Protocol! To get started:
 
-*   ✨ **Fork the repository** and clone it to your local machine.
-*   🌟 **Create a new branch** for your feature or bug fix: `git checkout -b feature/your-feature-name`.
-*   🛠️ **Set up your development environment** (Hardhat or Foundry, as described in "Installation").
-*   📝 **Write clear, concise, and well-documented code**. Adhere to existing coding styles and best practices.
-*   🧪 **Write unit and integration tests** for any new features or bug fixes. Ensure all tests pass.
-*   ✅ **Ensure test coverage** remains high.
-*   ⬆️ **Push your changes** to your fork.
-*   🤝 **Open a Pull Request** to the `main` branch, providing a detailed description of your changes and why they are necessary.
+We welcome contributions to the BAOBAB Protocol! To contribute, please follow these guidelines:
 
-Please ensure your work aligns with the project's vision for a secure, efficient, and scalable DeFi protocol.
+✨ **Fork the Repository**: Start by forking the project to your GitHub account.
+
+🌿 **Create a New Branch**:
+```bash
+git checkout -b feature/your-feature-name
+```
+Give your branch a descriptive name (e.g., `feature/add-rate-limiter-config` or `bugfix/resolve-adl-queue-bug`).
+
+🛠️ **Make Your Changes**: Implement your features or bug fixes. Ensure your code adheres to the existing style and quality.
+
+🧪 **Write & Run Tests**: All new features and bug fixes must be accompanied by comprehensive unit tests.
+```bash
+forge test
+```
+Make sure all existing tests pass as well.
+
+📚 **Update Documentation**: If your changes introduce new functionality or alter existing behavior, please update the relevant documentation (comments in code, README, etc.).
+
+⬆️ **Commit Your Changes**:
+```bash
+git commit -m "feat: Add new rate limiter configuration for TWAP orders"
+```
+Use clear and concise commit messages.
+
+🚀 **Push to Your Fork**:
+```bash
+git push origin feature/your-feature-name
+```
+
+📤 **Open a Pull Request**: Submit a pull request from your fork to the main repository. Provide a detailed description of your changes and why they are valuable.
+
+We appreciate your efforts to improve the BAOBAB Protocol!
 
 ## License
-This project is primarily licensed under the **Business Source License 1.1 (BUSL-1.1)**. Some components may inherit or incorporate code under the MIT License, as indicated by their respective SPDX license identifiers. For full details, please refer to the license headers in the source code files.
+
+This project is distributed under the BUSL-1.1 License (Business Source License 1.1), as indicated by the SPDX license identifiers in the source files.
 
 ## Author Info
 
 **Olujimi Adebakin**
-*   LinkedIn: [linkedin.com/in/olujimiadebakin](https://linkedin.com/in/olujimiadebakin)
-*   Twitter: [@olujimiadebakin](https://twitter.com/olujimiadebakin)
+- LinkedIn: [Your LinkedIn Profile](https://www.linkedin.com/in/olujimiadebakin) (Placeholder)
+- Twitter: [@olujimiadebakin](https://twitter.com/olujimiadebakin) (Placeholder)
 
 ---
 [![Readme was generated by Dokugen](https://img.shields.io/badge/Readme%20was%20generated%20by-Dokugen-brightgreen)](https://www.npmjs.com/package/dokugen)
+[![Built with Solidity](https://img.shields.io/badge/Built%20with-Solidity-5B4B2F.svg)](https://soliditylang.org/)
+[![Foundry Powered](https://img.shields.io/badge/Powered%20by-Foundry-critical)](https://getfoundry.sh/)
+[![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](https://spdx.org/licenses/BUSL-1.1.html)
