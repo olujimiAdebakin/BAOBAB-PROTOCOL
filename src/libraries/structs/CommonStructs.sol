@@ -463,6 +463,40 @@ library CommonStructs {
         uint16 burnBps;
     }
 
+/**
+    * @notice Fee configuration for a market
+    * @param takerFeeBps Taker fee in basis points
+    * @param makerRebateBps Maker rebate in basis points (negative = rebate paid to maker)
+    */
+    struct FeeConfig {
+    uint256 takerFeeBps;
+    int256 makerRebateBps;  // negative = rebate paid to maker
+}
+
+  struct FeeStats {
+        uint256 totalLpFees;
+        uint256 totalInsuranceFees;
+        uint256 totalTreasuryFees;
+        uint256 totalStakerFees;
+        uint256 totalBurned;
+        uint256 failedDistributions;
+    }
+
+/**
+    * @notice User tier for fee discounts
+    * @param minVolume30d Minimum 30-day trading volume (18 decimals)
+    * @param minStake Minimum token stake required (18 decimals)
+    * @param discountBps Discount on taker fees (basis points)
+    * @param makerRebateBps Enhanced maker rebate (basis points, can be negative)
+    */
+struct UserTier {
+    uint256 minVolume30d;
+    uint256 minStake;
+    uint256 discountBps;
+    int256 makerRebateBps;
+}
+
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                     VALIDATION HELPERS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
