@@ -63,7 +63,7 @@ contract FeeCalculator is AccessControl {
         _grantRole(EMERGENCY_ADMIN, admin);
 
         // === User Tiers ===
-        tiers[0] = CommonStructs.UserTier(0,        0,           0,     0);        // Retail
+        tiers[0] = CommonStructs.UserTier(0,        0,           2,     0);        // Retail
         tiers[1] = CommonStructs.UserTier(100_000e6, 1_000e18,   1500,  0);        // Active: 15% off
         tiers[2] = CommonStructs.UserTier(1_000_000e6, 10_000e18, 3000,  -10);     // Pro: 30% + small rebate
         tiers[3] = CommonStructs.UserTier(5_000_000e6, 50_000e18, 5000,  -25);     // VIP: 50% + 2.5 bps rebate
