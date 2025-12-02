@@ -2,14 +2,14 @@
 pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {SafeTransfer} from "../../library/utils/SafeTransfer.sol";
 
 /**
  * @title IncentiveManager
  * @notice Manages all reward programs and user incentives for BAOBAB Protocol
  * @dev Tracks trading volume, distributes rewards, manages referral program
  */
-contract IncentiveManager is ReentrancyGuard {
+contract IncentiveManager  {
 
     // ═══════════════════════════════════════════════════════════════════════════════════
     //                                       STRUCTS

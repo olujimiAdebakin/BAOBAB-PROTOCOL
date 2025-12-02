@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SecurityBase} from "../security/SecurityBase.sol";
@@ -12,6 +11,8 @@ import {EmergencyPauser} from "../security/EmergencyPauser.sol";
 import {RoleRegistry} from "../access/RoleRegistry.sol";
 import {AccessManager} from "../access/AccessManager.sol";
 import {AddressUtils} from "../libraries/utils/AddressUtils.sol";
+import {CircuitBreaker} from "../security/CircuitBreaker.sol";
+import {ModuleIds} from "../libraries/utils/ModuleIds.sol";
 
 
 /**
@@ -25,21 +26,28 @@ import {AddressUtils} from "../libraries/utils/AddressUtils.sol";
  *      • Gas-optimized batch operations
  *      • Maker rebate tracking and settlements
  */
-contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
-    using SafeERC20 for IERC20;
+contract FeeDistributor is EmergencyPauser{
+    // using SafeERC20 for IERC20;
     using BaobabMath for uint256;
-    using AddressUtils for address;
+    using AddressUtils for *;
+    // using SafeTransfer for IERC20;
+    using ModuleIds for *;
     using CommonStructs for CommonStructs.FeeDistribution;
 
+
     AccessManager public accessManager;
+    CircuitBreaker public circuitBreaker;
+    // EmergencyPauser public emergencyPauser;
+
+     bytes32 public constant FEE_DISTRIBUTOR_MODULE = ModuleIds.FEE_DISTRIBUTOR; 
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                       ROLES & CONSTANTS                                        */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
 
-    bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER");
-    bytes32 public constant TREASURY_ROLE = keccak256("TREASURY");
-    bytes32 public constant EMERGENCY_ADMIN = keccak256("EMERGENCY_ADMIN");
+    // bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER");
+    // bytes32 public constant TREASURY_ROLE = keccak256("TREASURY");
+    // bytes32 public constant EMERGENCY_ADMIN = keccak256("EMERGENCY_ADMIN");
 
     uint256 public constant MIN_DISTRIBUTION_AMOUNT = 1e6; // $1.00 minimum to prevent dust
     uint256 public constant MAX_FEE_BPS = BaobabMath.BPS; // 100% maximum
@@ -102,33 +110,49 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
     event MakerRebateClaimed(address indexed trader, uint256 amount);
     event AuthorizedDistributorUpdated(address indexed distributor, bool authorized);
     event DistributionFailed(address indexed recipient, uint256 amount, string reason);
+    event EmergencyFundSweep(address indexed emergencyTreasury,uint256 balance);
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                           ERRORS                                               */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
 
     error InvalidFeeDistribution();
-    error DistributionPaused();
+    error DistributionIsPaused();
     error UnauthorizedDistributor();
     error InsufficientAmount();
     error InvalidRecipientAddress();
     error EmergencyTreasuryNotSet();
     error InvalidEmergencyAddress();
     error DistributionFailedError(address recipient, uint256 amount);
+    error FeeDistributor__CircuitActive();
+    error FeeDistributor_ENGINE__Paused();
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                         MODIFIERS                                              */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
 
-    modifier onlyAuthorizedDistributor() {
-        if (!authorizedDistributors[msg.sender] && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
-            revert UnauthorizedDistributor();
-        }
+      modifier onlyRole(bytes32 role) {
+        require(accessManager.hasRole(role, msg.sender), "Unauthorized");
         _;
     }
 
+    modifier onlyAuthorizedDistributor() {
+    // Allow: 
+    // 1. Specifically authorized distributors
+    // 2. FEE_MANAGER_ROLE holders (they should be able to distribute)
+    // 3. ADMIN_ROLE holders (as backup)
+    bool isAuthorized = authorizedDistributors[msg.sender] ||
+                       accessManager.hasRole(RoleRegistry.FEE_MANAGER_ROLE, msg.sender) ||
+                       accessManager.hasRole(RoleRegistry.ADMIN_ROLE, msg.sender);
+    
+    if (!isAuthorized) {
+        revert UnauthorizedDistributor();
+    }
+    _;
+}
+
     modifier whenDistributionsActive() {
-        if (distributionsPaused) revert DistributionPaused();
+        if (distributionsPaused) revert DistributionIsPaused();
         _;
     }
 
@@ -140,9 +164,24 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
     modifier validRecipient(address recipient) {
         recipient.validateNotZero();
         // if (recipient == address(0)) revert InvalidRecipientAddress();
-        // _;
+        _;
     }
 
+    
+
+      modifier whenFeeCircuitNotActive() {
+        if (circuitBreaker.globalHalt() || circuitBreaker.isFeeCircuitTripped()) {
+            revert FeeDistributor__CircuitActive();
+        }
+        _;
+    }
+
+    //   modifier whenNotEmergencyPaused() {
+    //     if (emergencyPauser.protocolPaused() || emergencyPauser.isModulePaused(ModuleIds.ADL_ENGINE)) {
+    //         revert FeeDistributor_ENGINE__Paused();
+    //     }
+    //     _;
+    // }
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                        CONSTRUCTOR                                             */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
@@ -154,7 +193,9 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
      * @param _insuranceFund Insurance fund for protocol risk coverage
      * @param _treasury Protocol treasury for revenue
      * @param _stakingRewards Staking rewards contract for BAOBAB emissions
+     * 
      * @param admin Administrator address with default privileges
+     * @param multisig Multisig address for emergency controls
      */
     constructor(
         address _settlementToken,
@@ -163,41 +204,33 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
         address _treasury,
         address _stakingRewards,
         address _accessManager,
-        address admin
-    ) {
-        // if (
-        //     _settlementToken == address(0) ||
-        //     _liquidityVault == address(0) ||
-        //     _insuranceFund == address(0) ||
-        //     _treasury == address(0) ||
-        //     _stakingRewards == address(0) ||
-        //     _accessManager == address(0) ||
-        //     admin == address(0)
-        // ) {
-        //     revert InvalidRecipientAddress();
-        // }
-
+        address _circuitBreaker,
+        address admin,
+        address multisig
+    )
+     
+    EmergencyPauser(admin, multisig) {
+      
         _settlementToken.validateNotZero();
-        _liquidityVault.validateNotZero();
-        _insuranceFund.validateNotZero();
-        _treasury.validateNotZero();
-        _stakingRewards.validateNotZero();
-        _accessManager.validateNotZero();
+        _liquidityVault.validateContract();
+        _insuranceFund.validateContract();
+        _treasury.validateContract();
+        _stakingRewards.validateContract();
+        _accessManager.validateContract();
+        _circuitBreaker.validateContract();
         admin.validateNotZero();
+        multisig.validateNotZero();
 
         settlementToken = IERC20(_settlementToken);
         liquidityVault = _liquidityVault;
         insuranceFund = _insuranceFund;
         treasury = _treasury;
         stakingRewards = _stakingRewards;
-        accessmanager = _accessManager(AccessManager);
+        accessManager = AccessManager(_accessManager);
+        circuitBreaker = CircuitBreaker(_circuitBreaker);
         burnAddress = 0x000000000000000000000000000000000000dEaD;
 
-        // Initialize role hierarchy
-        grantRole(DEFAULT_ADMIN_ROLE, admin);
-        grantRole(FEE_MANAGER_ROLE, admin);
-        grantRole(TREASURY_ROLE, admin);
-        grantRole(EMERGENCY_ADMIN, admin);
+      
 
         // Authorize core protocol contracts as distributors
         authorizedDistributors[admin] = true;
@@ -223,55 +256,59 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
     /**
      * @notice Distribute collected fees according to current allocation split
      * @dev Gas-optimized with minimal storage operations and safe transfers
-     * @param amount Total fee amount in settlement token decimals
      */
-    function distributeFees(uint256 amount)
+    function distributeFees()
         external
         nonReentrant
-        whenNotEmergencyPaused
+        whenProtocolNotPaused 
         whenDistributionsActive
+         whenModuleNotPaused(ModuleIds.FEE_DISTRIBUTOR)
         onlyAuthorizedDistributor
-        validAmount(amount)
+        whenFeeCircuitNotActive
     {
-        totalFeesCollected += amount;
-        totalDistributions++;
-        lastDistributionTime = block.timestamp;
 
-        // Calculate distribution amounts with safe math
-        uint256 lpShare = amount.applyBps(feeSplit.lpBps);
-        uint256 insuranceShare = amount.applyBps(feeSplit.insuranceBps);
-        uint256 treasuryShare = amount.applyBps(feeSplit.treasuryBps);
-        uint256 stakerShare = amount.applyBps(feeSplit.stakersBps);
-        uint256 burnShare = amount.applyBps(feeSplit.burnBps);
+        uint256 amount = settlementToken.balanceOf(address(this));
+    if (amount < MIN_DISTRIBUTION_AMOUNT) revert InsufficientAmount();
+        _processDistribution(amount);
+        // totalFeesCollected += amount;
+        // totalDistributions++;
+        // lastDistributionTime = block.timestamp;
 
-        // Validate distribution sum equals original amount (safety check)
-        uint256 distributedTotal = lpShare + insuranceShare + treasuryShare + stakerShare + burnShare;
-        require(distributedTotal <= amount, "Distribution overflow");
+        // // Calculate distribution amounts with safe math
+        // uint256 lpShare = amount.applyBps(feeSplit.lpBps);
+        // uint256 insuranceShare = amount.applyBps(feeSplit.insuranceBps);
+        // uint256 treasuryShare = amount.applyBps(feeSplit.treasuryBps);
+        // uint256 stakerShare = amount.applyBps(feeSplit.stakersBps);
+        // uint256 burnShare = amount.applyBps(feeSplit.burnBps);
 
-        // Update fee statistics
-        feeStats.totalLpFees += lpShare;
-        feeStats.totalInsuranceFees += insuranceShare;
-        feeStats.totalTreasuryFees += treasuryShare;
-        feeStats.totalStakerFees += stakerShare;
-        feeStats.totalBurned += burnShare;
+        // // Validate distribution sum equals original amount (safety check)
+        // uint256 distributedTotal = lpShare + insuranceShare + treasuryShare + stakerShare + burnShare;
+        // require(distributedTotal <= amount, "Distribution overflow");
 
-        // Execute distributions with error handling
-        _distributeToRecipient(liquidityVault, lpShare, "Liquidity Vault");
-        _distributeToRecipient(insuranceFund, insuranceShare, "Insurance Fund");
-        _distributeToRecipient(treasury, treasuryShare, "Treasury");
-        _distributeToRecipient(stakingRewards, stakerShare, "Staking Rewards");
-        _distributeToRecipient(burnAddress, burnShare, "Burn Address");
+        // // Update fee statistics
+        // feeStats.totalLpFees += lpShare;
+        // feeStats.totalInsuranceFees += insuranceShare;
+        // feeStats.totalTreasuryFees += treasuryShare;
+        // feeStats.totalStakerFees += stakerShare;
+        // feeStats.totalBurned += burnShare;
 
-        emit FeesDistributed(
-            totalDistributions,
-            msg.sender,
-            amount,
-            lpShare,
-            insuranceShare,
-            treasuryShare,
-            stakerShare,
-            burnShare
-        );
+        // // Execute distributions with error handling
+        // _distributeToRecipient(liquidityVault, lpShare, "Liquidity Vault");
+        // _distributeToRecipient(insuranceFund, insuranceShare, "Insurance Fund");
+        // _distributeToRecipient(treasury, treasuryShare, "Treasury");
+        // _distributeToRecipient(stakingRewards, stakerShare, "Staking Rewards");
+        // _distributeToRecipient(burnAddress, burnShare, "Burn Address");
+
+        // emit FeesDistributed(
+        //     totalDistributions,
+        //     msg.sender,
+        //     amount,
+        //     lpShare,
+        //     insuranceShare,
+        //     treasuryShare,
+        //     stakerShare,
+        //     burnShare
+        // );
     }
 
     /**
@@ -281,8 +318,9 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
     function distributeFeesBatch(uint256[] calldata amounts)
         external
         nonReentrant
-        whenNotEmergencyPaused
+        whenProtocolNotPaused 
         whenDistributionsActive
+        whenFeeCircuitNotActive
         onlyAuthorizedDistributor
     {
         uint256 totalAmount = 0;
@@ -294,14 +332,14 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
         }
 
         require(totalAmount > 0, "No valid amounts");
-        distributeFees(totalAmount);
+        _processDistribution(totalAmount);
     }
 
     /**
      * @notice Claim pending maker rebates (negative fees)
      * @dev Traders can claim rebates accumulated from maker orders
      */
-    function claimMakerRebates() external nonReentrant whenNotEmergencyPaused {
+    function claimMakerRebates() external nonReentrant  whenProtocolNotPaused  whenFeeCircuitNotActive{
         uint256 rebateAmount = pendingMakerRebates[msg.sender];
         require(rebateAmount > 0, "No rebates available");
 
@@ -319,9 +357,11 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
     /**
      * @notice Update fee distribution split configuration
      * @param newSplit New fee distribution configuration
+     * 
      */
     function setFeeSplit(CommonStructs.FeeDistribution calldata newSplit)
         external
+        whenFeeCircuitNotActive
         onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
     {
         if (!newSplit.isValidFeeDistribution()) {
@@ -338,6 +378,7 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
     function setLiquidityVault(address newVault)
         external
         onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
+        whenFeeCircuitNotActive
         validRecipient(newVault)
     {
         address oldVault = liquidityVault;
@@ -401,14 +442,14 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
         emit EmergencyTreasuryUpdated(oldEmergencyTreasury, newEmergencyTreasury);
     }
 
-    /**
-     * @notice Pause/unpause all fee distributions (emergency only)
-     * @param paused Whether to pause distributions
-     */
-    function setDistributionsPaused(bool paused) external onlyRole(RoleRegistry.EMERGENCY_ADMIN || RoleRegistry.PAUSER_ROLE) {
-        distributionsPaused = paused;
-        emit DistributionPaused(paused, msg.sender);
-    }
+    // /**
+    //  * @notice Pause/unpause all fee distributions (emergency only)
+    //  * @param paused Whether to pause distributions
+    //  */
+    // function setDistributionsPaused(bool paused) external onlyRole(RoleRegistry.EMERGENCY_ADMIN || RoleRegistry.PAUSER_ROLE) {
+    //     distributionsPaused = paused;
+    //     emit DistributionPaused(paused, msg.sender);
+    // }
 
     /**
      * @notice Authorize/unauthorize fee distributors
@@ -438,9 +479,49 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
         _safeTransfer(emergencyTreasury, balance);
     }
 
+    /**
+     * @notice Emergency fund sweep to emergency treasury
+     * @dev Can be called by anyone when circuit breaker is triggered
+     */
+    function emergencyFundSweep() external whenFeeCircuitNotActive {
+        emergencyTreasury.validateNotZero();
+    // require(emergencyTreasury = address(0), "Emergency treasury not set");
+    
+    uint256 balance = settlementToken.balanceOf(address(this));
+    if (balance > 0) {
+        _safeTransfer(emergencyTreasury, balance);
+        emit EmergencyFundSweep(emergencyTreasury, balance);
+    }
+}
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                    INTERNAL FUNCTIONS                                          */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
+
+    function _processDistribution(uint256 amount) internal {
+    totalFeesCollected += amount;
+    totalDistributions++;
+    lastDistributionTime = block.timestamp;
+
+    uint256 lpShare = amount.applyBps(feeSplit.lpBps);
+    uint256 insuranceShare = amount.applyBps(feeSplit.insuranceBps);
+    uint256 treasuryShare = amount.applyBps(feeSplit.treasuryBps);
+    uint256 stakerShare = amount.applyBps(feeSplit.stakersBps);
+    uint256 burnShare = amount.applyBps(feeSplit.burnBps);
+
+    feeStats.totalLpFees += lpShare;
+    feeStats.totalInsuranceFees += insuranceShare;
+    feeStats.totalTreasuryFees += treasuryShare;
+    feeStats.totalStakerFees += stakerShare;
+    feeStats.totalBurned += burnShare;
+
+    _distributeToRecipient(liquidityVault, lpShare, "Liquidity Vault");
+    _distributeToRecipient(insuranceFund, insuranceShare, "Insurance Vault");
+    _distributeToRecipient(treasury, treasuryShare, "Treasury Vault");
+    _distributeToRecipient(stakingRewards, stakerShare, "Staking Reward");
+    _distributeToRecipient(burnAddress, burnShare, "Burn");
+
+    emit FeesDistributed(totalDistributions, msg.sender, amount, lpShare, insuranceShare, treasuryShare, stakerShare, burnShare);
+}
 
     /**
      * @notice Internal function to distribute funds with comprehensive error handling
@@ -448,33 +529,51 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
      * @param amount Distribution amount
      * @param recipientName Human-readable recipient name for error reporting
      */
-    function _distributeToRecipient(address to, uint256 amount, string memory recipientName) internal {
-        
+     function _distributeToRecipient(address to, uint256 amount, string memory recipientName) internal {
         if (amount == 0 || to == address(0)) return;
 
-        try settlementToken.safeTransfer(to, amount) {
-            // Transfer successful
-        } catch {
-            // Transfer failed - update statistics and emit event
+        bool success = _attemptTransfer(to, amount, recipientName);
+        if (!success) {
             feeStats.failedDistributions++;
             emit DistributionFailed(to, amount, "Transfer failed");
             
-            // In emergency scenarios, redirect to emergency treasury
             if (distributionsPaused && emergencyTreasury != address(0)) {
-                _safeTransfer(emergencyTreasury, amount);
+                _attemptTransfer(emergencyTreasury, amount, recipientName);
             }
         }
     }
 
-    /**
-     * @notice Safe token transfer with zero-address and zero-amount checks
-     * @param to Recipient address
-     * @param amount Transfer amount
-     */
+    // function _attemptTransfer(address to, uint256 amount) internal returns (bool) {
+    //     try SafeTransfer.safeTransfer(settlementToken, to, amount) {
+    //         return true;
+    //     } catch {
+    //         return false;
+    //     }
+    // }
+
+    function _attemptTransfer(address to, uint256 amount, string memory recipientName) internal returns (bool) {
+    // settlementToken is IERC20
+    (bool success, bytes memory data) = address(settlementToken).call(
+        abi.encodeWithSelector(settlementToken.transfer.selector, to, amount, recipientName)
+    );
+    // Return true only if call succeeded and either no data returned or data is true
+    return success && (data.length == 0 || abi.decode(data, (bool)));
+}
+
+
     function _safeTransfer(address to, uint256 amount) internal {
-        if (to == address(0) || amount == 0) return;
-        settlementToken.safeTransfer(to, amount);
+        SafeTransfer.safeTransfer(settlementToken, to, amount);
     }
+
+    // /**
+    //  * @notice Safe token transfer with zero-address and zero-amount checks
+    //  * @param to Recipient address
+    //  * @param amount Transfer amount
+    //  */
+    // function _safeTransfer(address token, address to, uint256 amount) internal {
+    //     if (to == address(0) || amount == 0) return;
+    //     settlementToken.safeTransferFrom(token, to, amount);
+    // }
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                      VIEW FUNCTIONS                                            */
@@ -510,7 +609,8 @@ contract FeeDistributor is AccessControl, SecurityBase, EmergencyPauser {
      * @return Whether address is authorized
      */
     function isAuthorizedDistributor(address distributor) external view returns (bool) {
-        return authorizedDistributors[distributor] || hasRole(RoleRegistry.FEE_MANAGER_ROLE, distributor);
+       return authorizedDistributors[distributor] || 
+               accessManager.hasRole(RoleRegistry.FEE_MANAGER_ROLE, distributor);
     }
 
     /**

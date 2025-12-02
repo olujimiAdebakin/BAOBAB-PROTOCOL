@@ -9,6 +9,8 @@ import {IEmergencyPauser} from "../../interfaces/IEmergencyPauser.sol";
 import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
 import {ModuleIds} from "../../libraries/utils/ModuleIds.sol";
 import {RateLimiter} from "../../security/RateLimiter.sol";
+// import {FeeDistributor} from "../../fees/FeeDistributor.sol";
+import {FeeCalculator} from "../../fees/FeeCalculator.sol";
 
 /**
  * @title PositionManager
@@ -68,6 +70,8 @@ contract PositionManager is SecurityBase {
     IEmergencyPauser public emergencyPauser;
     AutoDeleverageEngine public adlEngine;
     RateLimiter public rateLimiter;
+    FeeCalculator public feeCalculator;
+    // FeeDistributor public feeDistributor;
 
     using AddressUtils for address;
     using ModuleIds for *;
@@ -375,7 +379,7 @@ contract PositionManager is SecurityBase {
      */
     modifier whenCircuitActivated(bytes32 marketId) {
         // Optionally validate market ID is nonzero
-        marketId.validateNotZero();
+        // marketId.validateNotZero();
 
         // Prevent any operation if system-wide or market-specific breaker is active
         if (circuitBreaker.globalHalt() || circuitBreaker.isCircuitTripped(marketId)) {

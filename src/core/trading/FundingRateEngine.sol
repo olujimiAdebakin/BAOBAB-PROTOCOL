@@ -7,6 +7,7 @@ import {RoleRegistry} from "../../access/RoleRegistry.sol";
 import {AccessManager} from "../../access/AccessManager.sol";
 import {RateLimiter} from "../../security/RateLimiter.sol";
 import {RateLimitBuckets} from "../../libraries/utils/RateLimitBuckets.sol";
+import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
 
 /**
  * @title IAccessManager
@@ -45,6 +46,8 @@ contract FundingEngine {
 
     using RateLimitBuckets for *;
 
+    using AddressUtils for address;
+
     /// @notice The absolute maximum funding rate allowed if not overridden by market config (0.3% per 8 hours).
     uint256 public constant MAX_FUNDING_RATE = 300;
     /// @notice The fixed duration for a funding calculation period (8 hours).
@@ -80,6 +83,11 @@ contract FundingEngine {
      * @param _accessManager The address of the AccessManager contract.
      */
     constructor(address _positionManager, address _accessManager, address _rateLimiter) {
+
+        _positionManager.validateContract();
+        _accessManager.validateContract();
+        _rateLimiter.validateContract();
+
         positionManager = PositionManager(_positionManager);
         accessManager = AccessManager(_accessManager);
         rateLimiter = RateLimiter(_rateLimiter);
@@ -100,7 +108,6 @@ contract FundingEngine {
      * @return rateBps The calculated funding rate in basis points (BPS).
      */
     function applyFundingRate(bytes32 marketId) external onlyKeeper returns (int256 rateBps) {
-
         rateLimiter.checkRateLimit(msg.sender, RateLimitBuckets.APPLY_FUNDING);
         // Destructure only the required market config components
         (
