@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CommonStructs} from "../libraries/structs/CommonStructs.sol";
 import {BaobabMath} from "../libraries/utils/BaobabMath.sol";
 import {SafeTransfer} from "../libraries/utils/SafeTransfer.sol";
+import {RoleRegistry} from "../access/RoleRegistry.sol";
 
 /**
  * @title FeeCalculator – BAOBAB Protocol Revenue Engine
@@ -22,8 +23,9 @@ contract FeeCalculator is AccessControl {
     /*                                       ROLES & CONSTANTS                                        */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
 
-    bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER");
-    bytes32 public constant EMERGENCY_ADMIN = keccak256("EMERGENCY_ADMIN");
+    // Role constants imported from RoleRegistry
+    bytes32 public constant FEE_MANAGER_ROLE = RoleRegistry.FEE_MANAGER_ROLE;
+    bytes32 public constant EMERGENCY_ADMIN = RoleRegistry.EMERGENCY_ADMIN;
 
     uint256 public constant KEEPER_FEE_USD = 2.5e6; // $2.50
 
@@ -211,7 +213,7 @@ contract FeeCalculator is AccessControl {
         
         // Apply tier-based discount
         CommonStructs.UserTier memory userTier = _getUserTierStruct(user, notionalUsd);
-        uint256 discount = tiers[userTier].discountBps;
+        uint256 discount = userTier.discountBps;
         feeBps = baseFee.calculateFeeWithDiscount(discount);
         
         // Apply emergency fee caps if active
@@ -228,18 +230,17 @@ contract FeeCalculator is AccessControl {
 
     /**
      * @notice Calculate maker trading fee/rebate
-     * @param asset Trading asset address
      * @param user User address for tier determination
      * @param notionalUsd Notional value in USD for volume calculation
      * @return feeBps Maker fee in basis points (negative = rebate)
      */
     function calculateTradingFeeMaker(
-        address asset,
+        address, // asset (unused - maker fee is same across assets)
         address user,
         uint256 notionalUsd
     ) external view returns (int256 feeBps) {
-        CommonStructs.UserTier memory userTier = _getUserTier(user, notionalUsd);
-        return tiers[userTier].makerRebateBps; // Negative values indicate rebates
+        CommonStructs.UserTier memory userTier = _getUserTierStruct(user, notionalUsd);
+        return userTier.makerRebateBps; // Negative values indicate rebates
     }
 
     /**
@@ -259,7 +260,7 @@ contract FeeCalculator is AccessControl {
         
         // Apply tier discount
         CommonStructs.UserTier memory userTier = _getUserTierStruct(user, notionalUsd);
-        uint256 discount = tiers[userTier].discountBps;
+        uint256 discount = userTier.discountBps;
         feeBps = baseFee.calculateFeeWithDiscount(discount);
         
         // Cap position fees at 0.5%

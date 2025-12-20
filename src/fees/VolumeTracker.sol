@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {CommonStructs} from "../libraries/structs/CommonStructs.sol";
+import {VolumeStructs} from "../libraries/structs/VolumeStructs.sol";
 
 /**
  * @title VolumeTracker
@@ -23,6 +24,7 @@ import {CommonStructs} from "../libraries/structs/CommonStructs.sol";
 contract VolumeTracker {
 
      using CommonStructs for  *;
+     using VolumeStructs for *;
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                          STRUCTURES
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
