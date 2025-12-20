@@ -69,59 +69,7 @@ contract AutoDeleverageEngine is SecurityBase {
     //                                          STRUCTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /**
-     * @notice Position ranking for ADL queue
-     * @param positionId Position identifier
-     * @param trader Trader address
-     * @param side LONG or SHORT
-     * @param unrealizedPnL Current profit (always positive for ADL candidates)
-     * @param leverage Position leverage
-     * @param adlScore Ranking score (higher = first to be deleveraged)
-     * @param lastUpdateTime Last queue update
-     */
-    struct ADLCandidate {
-        bytes32 positionId;
-        address trader;
-        CommonStructs.Side side;
-        uint256 unrealizedPnL;
-        uint16 leverage;
-        uint256 adlScore;
-        uint256 lastUpdateTime;
-    }
 
-    /**
-     * @notice ADL execution record
-     * @param adlId Unique ADL event identifier
-     * @param marketId Market where ADL occurred
-     * @param liquidatedPosition Position that triggered ADL
-     * @param deleveragedPositions Positions that were force-closed
-     * @param totalSizeClosed Total size closed (18 decimals)
-     * @param executionPrice Price at which ADL executed (18 decimals)
-     * @param timestamp ADL execution time
-     */
-    struct ADLExecution {
-        bytes32 adlId;
-        bytes32 marketId;
-        bytes32 liquidatedPosition;
-        bytes32[] deleveragedPositions;
-        uint256 totalSizeClosed;
-        uint256 executionPrice;
-        uint256 timestamp;
-    }
-
-    /**
-     * @notice ADL configuration per market
-     * @param isEnabled Whether ADL is active for this market
-     * @param insuranceFundThreshold Insurance fund % before ADL triggers (bps)
-     * @param maxPositionsPerADL Maximum positions to deleverage in one event
-     * @param gracePeriod Time to attempt normal liquidation before ADL (seconds)
-     */
-    struct ADLConfig {
-        bool isEnabled;
-        uint16 insuranceFundThreshold;
-        uint8 maxPositionsPerADL;
-        uint256 gracePeriod;
-    }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                       STATE VARIABLES
@@ -135,7 +83,7 @@ contract AutoDeleverageEngine is SecurityBase {
      * @dev Key: bytes32 marketId (e.g., keccak256("ETH-USD"))
      * @dev Value: ADLConfig struct containing thresholds, limits, and flags
      */
-    mapping(bytes32 => ADLConfig) public adlConfigs;
+    mapping(bytes32 => CommonStructs.ADLConfig) public adlConfigs;
 
     /**
      * @notice ADL candidate queue organized by market and side
@@ -145,7 +93,7 @@ contract AutoDeleverageEngine is SecurityBase {
      * @dev SHORT side queue: Profitable short positions that can be force-closed to cover long liquidation deficits
      * @dev When ADL triggers, system dequeues from the opposite side of the liquidated position
      */
-    mapping(bytes32 => mapping(CommonStructs.Side => ADLCandidate[])) public adlQueues;
+    mapping(bytes32 => mapping(CommonStructs.Side => CommonStructs.ADLCandidate[])) public adlQueues;
 
     /**
      * @notice Reverse mapping from position ID to its index in the ADL queue
@@ -167,7 +115,7 @@ contract AutoDeleverageEngine is SecurityBase {
      *   - array of deleveraged positions with their PnL
      * @dev Used for post-mortem analysis, risk reporting, and user compensation
      */
-    mapping(bytes32 => ADLExecution) public adlExecutions;
+    mapping(bytes32 => CommonStructs.ADLExecution) public adlExecutions;
 
     /**
      * @notice Counter of total ADL events per market for risk monitoring
@@ -410,116 +358,176 @@ contract AutoDeleverageEngine is SecurityBase {
     //                                      ADL EXECUTION
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /**
-     * @notice Execute auto-deleveraging for a failed liquidation
-     * @param marketId Market identifier
-     * @param liquidatedPosition Position being liquidated
-     * @param side Side of liquidated position (opposite side will be deleveraged)
-     * @param sizeToClose Size that needs to be closed (18 decimals)
-     * @param executionPrice Current market price (18 decimals)
-     * @return success True if ADL completed successfully
-     * @dev Only callable by LiquidationEngine when normal liquidation fails
-     */
+    // /**
+    //  * @notice Execute auto-deleveraging for a failed liquidation
+    //  * @param marketId Market identifier
+    //  * @param liquidatedPosition Position being liquidated
+    //  * @param side Side of liquidated position (opposite side will be deleveraged)
+    //  * @param sizeToClose Size that needs to be closed (18 decimals)
+    //  * @param executionPrice Current market price (18 decimals)
+    //  * @return success True if ADL completed successfully
+    //  * @dev Only callable by LiquidationEngine when normal liquidation fails
+    //  */
 
-    /**
-     * @notice Executes the Auto-Deleveraging (ADL) process when a standard liquidation fails.
-     * @dev This function is called exclusively by the LiquidationEngine to reduce risk
-     *      by force-closing positions on the opposing side of the market until the
-     *      liquidated size is covered. It iterates through the ADL queue, force-closes
-     *      positions, updates records, and emits events for each deleveraged position.
-     *
-     * @param marketId The identifier of the market where the ADL is performed.
-     * @param liquidatedPosition The position ID that triggered the ADL event.
-     * @param side The side (LONG or SHORT) of the liquidated position. The function
-     *             deleverages positions on the opposite side.
-     * @param sizeToClose The total position size to be closed, in 18-decimal precision.
-     * @param executionPrice The current execution price used to close positions, in 18-decimals.
-     *
-     * @return success A boolean indicating whether the ADL fully covered the required size.
-     */
+    // /**
+    //  * @notice Executes the Auto-Deleveraging (ADL) process when a standard liquidation fails.
+    //  * @dev This function is called exclusively by the LiquidationEngine to reduce risk
+    //  *      by force-closing positions on the opposing side of the market until the
+    //  *      liquidated size is covered. It iterates through the ADL queue, force-closes
+    //  *      positions, updates records, and emits events for each deleveraged position.
+    //  *
+    //  * @param marketId The identifier of the market where the ADL is performed.
+    //  * @param liquidatedPosition The position ID that triggered the ADL event.
+    //  * @param side The side (LONG or SHORT) of the liquidated position. The function
+    //  *             deleverages positions on the opposite side.
+    //  * @param sizeToClose The total position size to be closed, in 18-decimal precision.
+    //  * @param executionPrice The current execution price used to close positions, in 18-decimals.
+    //  *
+    //  * @return success A boolean indicating whether the ADL fully covered the required size.
+    //  */
+    // function executeADL(
+    //     bytes32 marketId,
+    //     bytes32 liquidatedPosition,
+    //     CommonStructs.Side side,
+    //     uint256 sizeToClose,
+    //     uint256 executionPrice
+    // ) external onlyLiquidationEngine whenNotEmergencyPaused nonReentrant returns (bool success) {
+
+    //      CommonStructs.PositionData memory posData = positionManager.getPosition(liquidatedPosition);
+
+    //     address trader = posData.position.trader;
+
+    //       rateLimiter.checkRateLimit(trader, RateLimitBuckets.EXECUTE_ADL);
+
+    //     CommonStructs.ADLConfig memory config = adlConfigs[marketId];
+
+    //     if (!config.isEnabled) revert ADL__ADLNotEnabled();
+
+    //     // Determine opposing side to deleverage
+    //     CommonStructs.Side opposingSide =
+    //         side == CommonStructs.Side.LONG ? CommonStructs.Side.SHORT : CommonStructs.Side.LONG;
+
+    //     CommonStructs.ADLCandidate[] storage queue = adlQueues[marketId][opposingSide];
+
+    //     if (queue.length == 0) revert ADL__InsufficientCandidates();
+
+    //     // Generate ADL ID
+    //     bytes32 adlId = keccak256(abi.encodePacked(marketId, liquidatedPosition, block.timestamp));
+
+    //     bytes32[] memory deleveragedPositions = new bytes32[](config.maxPositionsPerADL);
+    //     uint256 totalClosed = 0;
+    //     uint256 deleveragedCount = 0;
+
+    //     // Deleverage positions from top of queue until size covered
+    //     for (uint256 i = 0; i < queue.length && totalClosed < sizeToClose; i++) {
+    //         if (deleveragedCount >= config.maxPositionsPerADL) break;
+
+    //         CommonStructs.ADLCandidate memory candidate = queue[i];
+
+    //         // Calculate size to close from this position
+    //         uint256 positionSize = _getPositionSize(candidate.positionId);
+    //         uint256 closeSize = sizeToClose - totalClosed;
+
+    //         if (closeSize > positionSize) {
+    //             closeSize = positionSize;
+    //         }
+
+    //         // Force-close position
+    //         ForceCloseParams memory params = ForceCloseParams({
+    //             positionId: candidate.positionId,
+    //             trader: candidate.trader,
+    //             size: closeSize,
+    //             price: executionPrice
+    //         });
+    //         _forceClosePosition(params);
+
+    //         deleveragedPositions[deleveragedCount] = candidate.positionId;
+    //         totalClosed += closeSize;
+    //         deleveragedCount++;
+
+    //         emit PositionDeleveraged(candidate.positionId, candidate.trader, candidate.unrealizedPnL, block.timestamp);
+    //     }
+
+    //     // Remove deleveraged positions from queue
+    //     _removeFromQueue(marketId, opposingSide, deleveragedCount);
+
+    //     // Record ADL execution
+    //     adlExecutions[adlId] = CommonStructs.ADLExecution({
+    //         adlId: adlId,
+    //         marketId: marketId,
+    //         liquidatedPosition: liquidatedPosition,
+    //         deleveragedPositions: deleveragedPositions,
+    //         totalSizeClosed: totalClosed,
+    //         executionPrice: executionPrice,
+    //         timestamp: block.timestamp
+    //     });
+
+    //     totalADLEvents[marketId]++;
+
+    //     emit ADLTriggered(adlId, marketId, liquidatedPosition, totalClosed);
+
+    //     return totalClosed >= sizeToClose;
+    // }
+
+    
     function executeADL(
-        bytes32 marketId,
-        bytes32 liquidatedPosition,
-        CommonStructs.Side side,
-        uint256 sizeToClose,
-        uint256 executionPrice
-    ) external onlyLiquidationEngine whenNotEmergencyPaused nonReentrant returns (bool success) {
+    bytes32 marketId,
+    bytes32 liquidatedPosition,
+    CommonStructs.Side side,
+    uint256 sizeToClose,
+    uint256 executionPrice
+) 
+    external 
+    onlyLiquidationEngine 
+    whenNotEmergencyPaused 
+    nonReentrant 
+    returns (bool success) 
+{
+    CommonStructs.PositionData memory posData = positionManager.getPosition(liquidatedPosition);
+    address trader = posData.position.trader;
 
-         CommonStructs.PositionData memory posData = positionManager.getPosition(liquidatedPosition);
+    rateLimiter.checkRateLimit(trader, RateLimitBuckets.EXECUTE_ADL);
 
-        address trader = posData.position.trader;
+    CommonStructs.ADLConfig memory config = adlConfigs[marketId];
+    if (!config.isEnabled) revert ADL__ADLNotEnabled();
 
-          rateLimiter.checkRateLimit(trader, RateLimitBuckets.EXECUTE_ADL);
+    CommonStructs.Side opposingSide =
+        side == CommonStructs.Side.LONG ? CommonStructs.Side.SHORT : CommonStructs.Side.LONG;
 
-        ADLConfig memory config = adlConfigs[marketId];
+    CommonStructs.ADLCandidate[] storage queue = adlQueues[marketId][opposingSide];
+    if (queue.length == 0) revert ADL__InsufficientCandidates();
 
-        if (!config.isEnabled) revert ADL__ADLNotEnabled();
+    bytes32 adlId = keccak256(abi.encodePacked(marketId, liquidatedPosition, block.timestamp));
 
-        // Determine opposing side to deleverage
-        CommonStructs.Side opposingSide =
-            side == CommonStructs.Side.LONG ? CommonStructs.Side.SHORT : CommonStructs.Side.LONG;
+    (bytes32[] memory deleveragedPositions, uint256 totalClosed) =
+        _processADLDeleverages(
+            marketId,
+            opposingSide,
+            sizeToClose,
+            executionPrice,
+            queue,
+            config
+        );
 
-        ADLCandidate[] storage queue = adlQueues[marketId][opposingSide];
+    _removeFromQueue(marketId, opposingSide, deleveragedPositions.length);
 
-        if (queue.length == 0) revert ADL__InsufficientCandidates();
+    adlExecutions[adlId] = CommonStructs.ADLExecution({
+        adlId: adlId,
+        marketId: marketId,
+        liquidatedPosition: liquidatedPosition,
+        deleveragedPositions: deleveragedPositions,
+        totalSizeClosed: totalClosed,
+        executionPrice: executionPrice,
+        timestamp: block.timestamp
+    });
 
-        // Generate ADL ID
-        bytes32 adlId = keccak256(abi.encodePacked(marketId, liquidatedPosition, block.timestamp));
+    totalADLEvents[marketId]++;
 
-        bytes32[] memory deleveragedPositions = new bytes32[](config.maxPositionsPerADL);
-        uint256 totalClosed = 0;
-        uint256 deleveragedCount = 0;
+    emit ADLTriggered(adlId, marketId, liquidatedPosition, totalClosed);
 
-        // Deleverage positions from top of queue until size covered
-        for (uint256 i = 0; i < queue.length && totalClosed < sizeToClose; i++) {
-            if (deleveragedCount >= config.maxPositionsPerADL) break;
+    return totalClosed >= sizeToClose;
+}
 
-            ADLCandidate memory candidate = queue[i];
-
-            // Calculate size to close from this position
-            uint256 positionSize = _getPositionSize(candidate.positionId);
-            uint256 closeSize = sizeToClose - totalClosed;
-
-            if (closeSize > positionSize) {
-                closeSize = positionSize;
-            }
-
-            // Force-close position
-            ForceCloseParams memory params = ForceCloseParams({
-                positionId: candidate.positionId,
-                trader: candidate.trader,
-                size: closeSize,
-                price: executionPrice
-            });
-            _forceClosePosition(params);
-
-            deleveragedPositions[deleveragedCount] = candidate.positionId;
-            totalClosed += closeSize;
-            deleveragedCount++;
-
-            emit PositionDeleveraged(candidate.positionId, candidate.trader, candidate.unrealizedPnL, block.timestamp);
-        }
-
-        // Remove deleveraged positions from queue
-        _removeFromQueue(marketId, opposingSide, deleveragedCount);
-
-        // Record ADL execution
-        adlExecutions[adlId] = ADLExecution({
-            adlId: adlId,
-            marketId: marketId,
-            liquidatedPosition: liquidatedPosition,
-            deleveragedPositions: deleveragedPositions,
-            totalSizeClosed: totalClosed,
-            executionPrice: executionPrice,
-            timestamp: block.timestamp
-        });
-
-        totalADLEvents[marketId]++;
-
-        emit ADLTriggered(adlId, marketId, liquidatedPosition, totalClosed);
-
-        return totalClosed >= sizeToClose;
-    }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                      QUEUE MANAGEMENT
@@ -558,7 +566,7 @@ contract AutoDeleverageEngine is SecurityBase {
         // Calculate ADL score: higher PnL + higher leverage = higher score
         uint256 adlScore = (unrealizedPnL * leverage) / 100;
 
-        ADLCandidate memory candidate = ADLCandidate({
+        CommonStructs.ADLCandidate memory candidate = CommonStructs.ADLCandidate({
             positionId: positionId,
             trader: trader,
             side: side,
@@ -570,7 +578,7 @@ contract AutoDeleverageEngine is SecurityBase {
 
         // Check if position already in queue
         uint256 existingIndex = queueIndices[positionId];
-        ADLCandidate[] storage queue = adlQueues[marketId][side];
+        CommonStructs.ADLCandidate[] storage queue = adlQueues[marketId][side];
 
         if (existingIndex > 0 && existingIndex <= queue.length) {
             // Update existing entry
@@ -619,7 +627,7 @@ contract AutoDeleverageEngine is SecurityBase {
         uint8 maxPositionsPerADL,
         uint256 gracePeriod
     ) external onlyAdmin {
-        adlConfigs[marketId] = ADLConfig({
+        adlConfigs[marketId] = CommonStructs.ADLConfig({
             isEnabled: true,
             insuranceFundThreshold: insuranceFundThreshold,
             maxPositionsPerADL: maxPositionsPerADL,
@@ -640,6 +648,53 @@ contract AutoDeleverageEngine is SecurityBase {
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                    INTERNAL FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    
+    function _processADLDeleverages(
+    bytes32 /* marketId */,
+    CommonStructs.Side /* opposingSide */,
+    uint256 sizeToClose,
+    uint256 executionPrice,
+    CommonStructs.ADLCandidate[] storage queue,
+    CommonStructs.ADLConfig memory config
+) 
+    internal 
+    returns (bytes32[] memory deleveragedPositions, uint256 totalClosed)
+{
+    deleveragedPositions = new bytes32[](config.maxPositionsPerADL);
+    uint256 deleveragedCount = 0;
+
+    for (uint256 i = 0; i < queue.length && totalClosed < sizeToClose; i++) {
+        if (deleveragedCount >= config.maxPositionsPerADL) break;
+
+        CommonStructs.ADLCandidate memory candidate = queue[i];
+        uint256 positionSize = _getPositionSize(candidate.positionId);
+
+        uint256 closeSize = sizeToClose - totalClosed;
+        if (closeSize > positionSize) closeSize = positionSize;
+
+        _forceClosePosition(
+            ForceCloseParams({
+                positionId: candidate.positionId,
+                trader: candidate.trader,
+                size: closeSize,
+                price: executionPrice
+            })
+        );
+
+        deleveragedPositions[deleveragedCount] = candidate.positionId;
+        totalClosed += closeSize;
+        deleveragedCount++;
+
+        emit PositionDeleveraged(
+            candidate.positionId,
+            candidate.trader,
+            candidate.unrealizedPnL,
+            block.timestamp
+        );
+    }
+}
+
 
     /**
      * @notice Internally force-closes a trader's position during the ADL process.
@@ -679,13 +734,13 @@ contract AutoDeleverageEngine is SecurityBase {
      * @param side Position side
      */
     function _sortQueue(bytes32 marketId, CommonStructs.Side side) internal {
-        ADLCandidate[] storage queue = adlQueues[marketId][side];
+        CommonStructs.ADLCandidate[] storage queue = adlQueues[marketId][side];
 
         // Simple bubble sort (fine for small queues, optimize for production)
         for (uint256 i = 0; i < queue.length; i++) {
             for (uint256 j = i + 1; j < queue.length; j++) {
                 if (queue[j].adlScore > queue[i].adlScore) {
-                    ADLCandidate memory temp = queue[i];
+                    CommonStructs.ADLCandidate memory temp = queue[i];
                     queue[i] = queue[j];
                     queue[j] = temp;
                 }
@@ -700,7 +755,7 @@ contract AutoDeleverageEngine is SecurityBase {
      * @param count Number to remove
      */
     function _removeFromQueue(bytes32 marketId, CommonStructs.Side side, uint256 count) internal {
-        ADLCandidate[] storage queue = adlQueues[marketId][side];
+        CommonStructs.ADLCandidate[] storage queue = adlQueues[marketId][side];
 
         for (uint256 i = 0; i < count && queue.length > 0; i++) {
             delete queueIndices[queue[0].positionId];
@@ -723,7 +778,7 @@ contract AutoDeleverageEngine is SecurityBase {
         uint256 index = queueIndices[positionId];
         if (index == 0) return;
 
-        ADLCandidate[] storage queue = adlQueues[marketId][side];
+        CommonStructs.ADLCandidate[] storage queue = adlQueues[marketId][side];
 
         // Shift array left
         for (uint256 i = index - 1; i < queue.length - 1; i++) {
@@ -747,7 +802,7 @@ contract AutoDeleverageEngine is SecurityBase {
     function getADLQueue(bytes32 marketId, CommonStructs.Side side)
         external
         view
-        returns (ADLCandidate[] memory queue)
+        returns (CommonStructs.ADLCandidate[] memory queue)
     {
         return adlQueues[marketId][side];
     }
