@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeTransfer} from "../libraries/utils/SafeTransfer.sol";
 import {SecurityBase} from "../security/SecurityBase.sol";
 import {AddressUtils} from "../libraries/utils/AddressUtils.sol";
-
+import {PositionManager} from "../core/trading/PositionManager.sol";
 /**
  * @title IncentiveManager
  * @author BAOBAB Protocol

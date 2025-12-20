@@ -152,7 +152,7 @@ This project is licensed under the **BUSL-1.1** (Business Source License 1.1). S
 
 ## Author Info
 **Adebakn Olujimi**
-- Twitter: [@olujimi_the_dev]
+- Twitter: @olujimi_the_dev
 
 
 ---
