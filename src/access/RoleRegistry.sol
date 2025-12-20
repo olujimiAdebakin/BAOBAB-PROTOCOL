@@ -82,6 +82,12 @@ library RoleRegistry {
      */
     bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER_ROLE");
 
+    /**
+     * @notice Fee distributor - revenue sharing
+     * @dev Can distribute collected fees to stakeholders
+     */
+    bytes32 public constant FEE_DISTRIBTOR_ROLE = keccak256("FEE_DISTRIBUTOR_ROLE");
+
     
     // bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER");
 
@@ -160,6 +166,9 @@ library RoleRegistry {
         if (role == LIQUIDATOR_ROLE) return "Liquidator - Position Liquidations";
         if (role == ORACLE_UPDATER_ROLE) return "Oracle Updater - Price Feeds";
         if (role == MARKET_MAKER_ROLE) return "Market Maker - DAO Trading Bot";
+        if (role == FEE_DISTRIBTOR_ROLE) return "Fee Distributor - Revenue Sharing";
+        if (role == TREASURY_ROLE) return "Treasury Manager - Fund Management";
+        if (role == EMERGENCY_ADMIN) return "Emergency Admin - Override Pauses";
         if (role == FEE_MANAGER_ROLE) return "Fee Manager - Revenue Distribution";
         if (role == BASKET_MANAGER_ROLE) return "Basket Manager - Index Management";
         if (role == EVENT_SETTLER_ROLE) return "Event Settler - Prediction Markets";
@@ -186,6 +195,7 @@ library RoleRegistry {
         if (role == TRADING_OPERATOR_ROLE) return 40;
         if (role == VAULT_OPERATOR_ROLE) return 40;
         if (role == FEE_MANAGER_ROLE) return 40;
+        if (role == FEE_DISTRIBTOR_ROLE) return 40;
         if (role == TREASURY_ROLE) return 40;
         if (role == EMERGENCY_ADMIN) return 35;
         if (role == BASKET_MANAGER_ROLE) return 30;
