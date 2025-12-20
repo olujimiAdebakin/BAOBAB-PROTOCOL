@@ -94,6 +94,32 @@ library CommonStructs {
         COMMODITY
     }
 
+    /**
+     * @notice Reasons for tripping a circuit breaker
+     * @dev NONE - No trip
+     * @dev PRICE_DEVIATION - Excessive price movement
+     * @dev VOLUME_SPIKE - Abnormal trading volume
+     * @dev LIQUIDATION_CASCADE - Rapid liquidations detected
+     * @dev ORACLE_FAILURE - Price feed disruption
+     * @dev MANUAL_HALT - Admin-triggered halt
+     * @dev FEE_AMOUNT_ANOMALY - Fee amount exceeds maximum threshold
+     * @dev FEE_SPIKE_DETECTED - Fee amount spikes abnormally
+     * @dev DISTRIBUTION_FAILURE - Too many consecutive distribution failures
+     * @dev RECIPIENT_BALANCE_LIMIT - Recipient balance exceeds safe limits
+     */
+    enum TripReason {
+        NONE,
+        PRICE_DEVIATION,
+        VOLUME_SPIKE,
+        LIQUIDATION_CASCADE,
+        ORACLE_FAILURE,
+        MANUAL_HALT,
+        FEE_AMOUNT_ANOMALY, // Fee amount exceeds maximum threshold
+        FEE_SPIKE_DETECTED, // Fee amount spikes abnormally
+        DISTRIBUTION_FAILURE, // Too many consecutive distribution failures
+        RECIPIENT_BALANCE_LIMIT // Recipient balance exceeds safe limits
+
+    }
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                      MARKET STRUCTURES
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -101,9 +127,9 @@ library CommonStructs {
     /**
      * @notice Core market configuration and metadata
      * @param marketId Unique identifier for the market
-     * @param baseAsset Asset being traded (e.g., "BTC", "DANGCEM")
-     * @param quoteAsset Settlement currency (e.g., "USD", "USDC")
-     * @param assetClass Category of asset (CRYPTO, STOCK, etc.)
+     * @param baseAsset Asset being traded (e.g., "BTC", "DANGCEM"),
+     * @param quoteAsset Settlement currency (e.g., "USD", "USDC"),
+     * @param assetClass Category of asset (CRYPTO, STOCK, etc.),
      * @param status Current operational state
      * @param createdAt Timestamp of market creation
      * @param oracleAdapter Address providing price feeds
@@ -395,6 +421,60 @@ library CommonStructs {
         bool isValid;
     }
 
+        /**
+     * @notice Position ranking for ADL queue
+     * @param positionId Position identifier
+     * @param trader Trader address
+     * @param side LONG or SHORT
+     * @param unrealizedPnL Current profit (always positive for ADL candidates)
+     * @param leverage Position leverage
+     * @param adlScore Ranking score (higher = first to be deleveraged)
+     * @param lastUpdateTime Last queue update
+     */
+    struct ADLCandidate {
+        bytes32 positionId;
+        address trader;
+        CommonStructs.Side side;
+        uint256 unrealizedPnL;
+        uint16 leverage;
+        uint256 adlScore;
+        uint256 lastUpdateTime;
+    }
+
+    /**
+     * @notice ADL execution record
+     * @param adlId Unique ADL event identifier
+     * @param marketId Market where ADL occurred
+     * @param liquidatedPosition Position that triggered ADL
+     * @param deleveragedPositions Positions that were force-closed
+     * @param totalSizeClosed Total size closed (18 decimals)
+     * @param executionPrice Price at which ADL executed (18 decimals)
+     * @param timestamp ADL execution time
+     */
+    struct ADLExecution {
+        bytes32 adlId;
+        bytes32 marketId;
+        bytes32 liquidatedPosition;
+        bytes32[] deleveragedPositions;
+        uint256 totalSizeClosed;
+        uint256 executionPrice;
+        uint256 timestamp;
+    }
+
+    /**
+     * @notice ADL configuration per market
+     * @param isEnabled Whether ADL is active for this market
+     * @param insuranceFundThreshold Insurance fund % before ADL triggers (bps)
+     * @param maxPositionsPerADL Maximum positions to deleverage in one event
+     * @param gracePeriod Time to attempt normal liquidation before ADL (seconds)
+     */
+    struct ADLConfig {
+        bool isEnabled;
+        uint16 insuranceFundThreshold;
+        uint8 maxPositionsPerADL;
+        uint256 gracePeriod;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                    COLLATERAL STRUCTURES
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -461,6 +541,110 @@ library CommonStructs {
         uint16 insuranceBps;
         uint16 stakersBps;
         uint16 burnBps;
+    }
+
+    /**
+     * @notice Fee distribution circuit breaker state
+     * @param isTripped Whether fee circuit is tripped
+     * @param tripReason Reason for trip
+     * @param tripTime When circuit was tripped
+     * @param lastFeeAmount Last distributed fee amount for anomaly detection
+     * @param averageFeeAmount Rolling average of fee amounts
+     * @param consecutiveFailures Number of consecutive distribution failures
+     */
+    struct FeeCircuitState {
+        bool isTripped;
+        TripReason tripReason;
+        uint256 tripTime;
+        uint256 lastFeeAmount;
+        uint256 averageFeeAmount;
+        uint256 consecutiveFailures;
+        uint256 triggeredAmount;
+    }
+    /**
+     * @notice Fee configuration for a market
+     * @param takerFeeBps Taker fee in basis points
+     * @param makerRebateBps Maker rebate in basis points (negative = rebate paid to maker)
+     */
+
+    struct FeeConfig {
+        uint256 takerFeeBps;
+        int256 makerRebateBps; // negative = rebate paid to maker
+    }
+
+    struct FeeStats {
+        uint256 totalLpFees;
+        uint256 totalInsuranceFees;
+        uint256 totalTreasuryFees;
+        uint256 totalStakerFees;
+        uint256 totalBurned;
+        uint256 failedDistributions;
+    }
+
+    /**
+     * @notice User tier for fee discounts
+     * @param minVolume30d Minimum 30-day trading volume (18 decimals)
+     * @param minStake Minimum token stake required (18 decimals)
+     * @param discountBps Discount on taker fees (basis points)
+     * @param makerRebateBps Enhanced maker rebate (basis points, can be negative)
+     */
+    struct UserTier {
+        uint256 minVolume30d;
+        uint256 minStake;
+        uint256 discountBps;
+        int256 makerRebateBps;
+    }
+
+    /**
+     * @notice Configuration for circuit breaker thresholds
+     * @param maxPriceDeviationBps Maximum price change before halt (basis points, e.g., 1000 = 10%)
+     * @param maxVolumeSpikeBps Maximum volume spike before halt (basis points)
+     * @param maxLiquidationRateBps Maximum liquidation ratio before halt (basis points)
+     * @param cooldownPeriod Minimum time circuit must stay open after reset (seconds)
+     * @param observationWindow Time window for monitoring (seconds)
+     * @param isEnabled Whether circuit breaker is active
+     * @param maxFeeAmount Maximum single fee distribution
+     * @param maxFeeSpikeBps Maximum fee spike vs average (e.g., 1000 = 10x)
+     * @param maxConsecutiveFailures Max distribution failures before trip
+     * @param maxRecipientBalance Maximum balance per recipient
+     * @param feeProtectionEnabled Whether fee protection is active
+     */
+    struct CircuitBreakerConfig {
+        // TRADING-PROTECTIONS
+        uint16 maxPriceDeviationBps;
+        uint16 maxVolumeSpikeBps;
+        uint16 maxLiquidationRateBps;
+        uint256 cooldownPeriod;
+        uint256 observationWindow;
+        bool isEnabled;
+        // NEW: FEE DISTRIBUTION PROTECTION
+        uint256 maxFeeAmount; // Maximum single fee distribution
+        uint16 maxFeeSpikeBps; // Maximum fee spike vs average (e.g., 1000 = 10x)
+        uint8 maxConsecutiveFailures; // Max distribution failures before trip
+        uint256 maxRecipientBalance; // Maximum balance per recipient
+        bool feeProtectionEnabled; // Whether fee protection is activ
+    }
+
+    /**
+     * @notice Market-specific circuit breaker state
+     * @param marketId Market identifier
+     * @param isTripped Whether circuit is currently tripped
+     * @param tripReason Reason for circuit trip
+     * @param tripTime When circuit was tripped
+     * @param lastResetTime Last time circuit was reset
+     * @param tripCount Number of times tripped
+     * @param referencePrice Price at start of observation window (18 decimals)
+     * @param referenceVolume Volume at start of observation window (18 decimals)
+     */
+    struct CircuitState {
+        bytes32 marketId;
+        bool isTripped;
+        TripReason tripReason;
+        uint256 tripTime;
+        uint256 lastResetTime;
+        uint256 tripCount;
+        uint256 referencePrice;
+        uint256 referenceVolume;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════

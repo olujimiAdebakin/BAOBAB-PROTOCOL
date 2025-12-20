@@ -9,6 +9,8 @@ import {IEmergencyPauser} from "../../interfaces/IEmergencyPauser.sol";
 import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
 import {ModuleIds} from "../../libraries/utils/ModuleIds.sol";
 import {RateLimiter} from "../../security/RateLimiter.sol";
+// import {FeeDistributor} from "../../fees/FeeDistributor.sol";
+import {FeeCalculator} from "../../fees/FeeCalculator.sol";
 
 /**
  * @title PositionManager
@@ -68,6 +70,8 @@ contract PositionManager is SecurityBase {
     IEmergencyPauser public emergencyPauser;
     AutoDeleverageEngine public adlEngine;
     RateLimiter public rateLimiter;
+    FeeCalculator public feeCalculator;
+    // FeeDistributor public feeDistributor;
 
     using AddressUtils for address;
     using ModuleIds for *;
