@@ -240,7 +240,8 @@ contract FeeCalculator is AccessControl {
         uint256 notionalUsd
     ) external view returns (int256 feeBps) {
         CommonStructs.UserTier memory userTier = _getUserTierStruct(user, notionalUsd);
-        return userTier.makerRebateBps; // Negative values indicate rebates
+        // Will have Negative values indicate rebates
+        return userTier.makerRebateBps; 
     }
 
     /**

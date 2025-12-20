@@ -88,6 +88,12 @@ contract FeeDistributor is EmergencyPauser{
     // Distribution whitelist (authorized callers)
     mapping(address => bool) public authorizedDistributors;
 
+    // Keeper bot configuration
+    address public keeperBot;
+    uint256 public minDistributionBalance = 100e6; // $100 minimum (6 decimals USDC)
+    uint256 public lastKeeperDistributionTime;
+    uint256 public keeperDistributionInterval = 1 hours;
+
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                           EVENTS                                               */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
@@ -111,6 +117,8 @@ contract FeeDistributor is EmergencyPauser{
     event AuthorizedDistributorUpdated(address indexed distributor, bool authorized);
     event DistributionFailed(address indexed recipient, uint256 amount, string reason);
     event EmergencyFundSweep(address indexed emergencyTreasury,uint256 balance);
+    event KeeperBotUpdated(address indexed oldKeeper, address indexed newKeeper);
+    event KeeperDistributionTriggered(address indexed keeper, uint256 amount, uint256 timestamp);
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                           ERRORS                                               */
@@ -139,9 +147,11 @@ contract FeeDistributor is EmergencyPauser{
     modifier onlyAuthorizedDistributor() {
     // Allow: 
     // 1. Specifically authorized distributors
-    // 2. FEE_MANAGER_ROLE holders (they should be able to distribute)
-    // 3. ADMIN_ROLE holders (as backup)
+    // 2. Keeper bot (if configured)
+    // 3. FEE_MANAGER_ROLE holders
+    // 4. ADMIN_ROLE holders (as backup)
     bool isAuthorized = authorizedDistributors[msg.sender] ||
+                       msg.sender == keeperBot ||
                        accessManager.hasRole(RoleRegistry.FEE_MANAGER_ROLE, msg.sender) ||
                        accessManager.hasRole(RoleRegistry.ADMIN_ROLE, msg.sender);
     
@@ -262,7 +272,7 @@ contract FeeDistributor is EmergencyPauser{
         nonReentrant
         whenProtocolNotPaused 
         whenDistributionsActive
-         whenModuleNotPaused(ModuleIds.FEE_DISTRIBUTOR)
+        whenModuleNotPaused(ModuleIds.FEE_DISTRIBUTOR)
         onlyAuthorizedDistributor
         whenFeeCircuitNotActive
     {
@@ -465,6 +475,71 @@ contract FeeDistributor is EmergencyPauser{
     }
 
     /**
+     * @notice Set keeper bot address for automated distributions
+     * @param _keeperBot Keeper bot address (0x0 to disable)
+     */
+    function setKeeperBot(address _keeperBot)
+        external
+        onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
+    {
+        address oldKeeper = keeperBot;
+        keeperBot = _keeperBot;
+        emit KeeperBotUpdated(oldKeeper, _keeperBot);
+    }
+
+    /**
+     * @notice Set minimum balance threshold for keeper distribution
+     * @param _minBalance Minimum USDC balance required (in 6 decimals)
+     */
+    function setMinDistributionBalance(uint256 _minBalance)
+        external
+        onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
+    {
+        minDistributionBalance = _minBalance;
+    }
+
+    /**
+     * @notice Set keeper distribution interval
+     * @param _interval Interval in seconds (e.g., 1 hours = 3600)
+     */
+    function setKeeperDistributionInterval(uint256 _interval)
+        external
+        onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
+    {
+        require(_interval >= 15 minutes, "Interval too short");
+        keeperDistributionInterval = _interval;
+    }
+
+    /**
+     * @notice Check if keeper can execute distribution (view function for keeper bot)
+     * @return canExecute Whether keeper conditions are met
+     * @return reason Human-readable reason if cannot execute
+     */
+    function canKeeperExecute() external view returns (bool canExecute, string memory reason) {
+        if (keeperBot == address(0)) {
+            return (false, "Keeper bot not configured");
+        }
+        if (distributionsPaused) {
+            return (false, "Distributions paused");
+        }
+        if (circuitBreaker.globalHalt() || circuitBreaker.isFeeCircuitTripped()) {
+            return (false, "Circuit breaker active");
+        }
+
+        uint256 balance = settlementToken.balanceOf(address(this));
+        if (balance < minDistributionBalance) {
+            return (false, "Balance below minimum threshold");
+        }
+
+        uint256 timeSinceLastDistribution = block.timestamp - lastKeeperDistributionTime;
+        if (timeSinceLastDistribution < keeperDistributionInterval) {
+            return (false, "Distribution interval not met");
+        }
+
+        return (true, "Ready for distribution");
+    }
+
+    /**
      * @notice Emergency withdrawal to treasury (circuit breaker scenario)
      * @dev Only usable when distributions are paused
      */
@@ -501,6 +576,12 @@ contract FeeDistributor is EmergencyPauser{
     totalFeesCollected += amount;
     totalDistributions++;
     lastDistributionTime = block.timestamp;
+    
+    // Update keeper last distribution time if called by keeper
+    if (msg.sender == keeperBot) {
+        lastKeeperDistributionTime = block.timestamp;
+        emit KeeperDistributionTriggered(msg.sender, amount, block.timestamp);
+    }
 
     uint256 lpShare = amount.applyBps(feeSplit.lpBps);
     uint256 insuranceShare = amount.applyBps(feeSplit.insuranceBps);
@@ -530,7 +611,7 @@ contract FeeDistributor is EmergencyPauser{
      * @param recipientName Human-readable recipient name for error reporting
      */
      function _distributeToRecipient(address to, uint256 amount, string memory recipientName) internal {
-        if (amount == 0 || to == address(0)) return;
+        if (amount == 0 || to == address(0)) return ;
 
         bool success = _attemptTransfer(to, amount, recipientName);
         if (!success) {
