@@ -238,7 +238,8 @@ contract FeeDistributor is EmergencyPauser{
         stakingRewards = _stakingRewards;
         accessManager = AccessManager(_accessManager);
         circuitBreaker = CircuitBreaker(_circuitBreaker);
-        burnAddress = 0x000000000000000000000000000000000000dEaD;
+        // placeHolder
+        burnAddress = 0x000000000000000000000000000000000000dEaD; // i will be changing this to a proper usdc address later on
 
       
 
@@ -247,10 +248,10 @@ contract FeeDistributor is EmergencyPauser{
 
         // Set default fee distribution (optimized for protocol sustainability)
         feeSplit = CommonStructs.FeeDistribution({
-            treasuryBps: 3000,   // 30% - Protocol development & operations
+            treasuryBps: 3200,   // 32% - Protocol development & operations
             lpBps: 4000,         // 40% - Liquidity provider incentives
             insuranceBps: 1500,  // 15% - Risk coverage & insurance
-            stakersBps: 1200,    // 12% - BAOBAB staking rewards
+            stakersBps: 1000,    // 10% - BAOBAB staking rewards
             burnBps: 300         // 3%  - Deflationary tokenomics
         });
 
