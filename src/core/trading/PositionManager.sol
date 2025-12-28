@@ -740,6 +740,7 @@ function openPosition(
     
     //  CommonStructs.Position storage position = positionData.position;
      position.lastCumulativeFunding = fundingEngine.getCumulativeFunding(marketId);
+
     // Basic validation
     if (size == 0) revert PositionManager__InvalidSize();
     if (collateral == 0) revert PositionManager__InsufficientCollateral();
