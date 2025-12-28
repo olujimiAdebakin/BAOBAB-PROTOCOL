@@ -6,6 +6,7 @@ import {SecurityBase} from "../../security/SecurityBase.sol";
 import {AutoDeleverageEngine} from "../trading/engines/AutoDeleverageEngine.sol";
 import {ICircuitBreaker} from "../../interfaces/ICircuitBreaker.sol";
 import {IEmergencyPauser} from "../../interfaces/IEmergencyPauser.sol";
+import {IVolumeTracker} from "../../interfaces/IVolumeTracker.sol"; 
 import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
 import {ModuleIds} from "../../libraries/utils/ModuleIds.sol";
 import {RateLimiter} from "../../security/RateLimiter.sol";
@@ -13,6 +14,11 @@ import {RateLimiter} from "../../security/RateLimiter.sol";
 import {FeeCalculator} from "../../fees/FeeCalculator.sol";
 import {IncentiveManager} from "../../fees/IncentiveManager.sol";
 import {MarketRegistry} from "../markets/MarketRegistry.sol";
+import {SafeTransfer} from "../../libraries/utils/SafeTransfer.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {FundingEngine} from "./FundingRateEngine.sol";
+// import {IPriceFeed} from "../../interfaces/IPriceFeed.sol";
+// import {OrderStorage} from  "../data/OrderStorage.sol";
 
 /**
  * @title PositionManager
@@ -74,13 +80,22 @@ contract PositionManager is SecurityBase {
     RateLimiter public rateLimiter;
     FeeCalculator public feeCalculator;
     IncentiveManager public incentiveManager;
+    IVolumeTracker public volumeTracker;
     MarketRegistry public marketRegistry;
+    FundingEngine public fundingEngine;
+    // IPriceFeed public priceFeed;
     // FeeDistributor public feeDistributor;
+
+
 
     using AddressUtils for address;
     using ModuleIds for *;
 
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+        // Example market IDs (adjust based on your system)
+    bytes32 constant ETH_USD = keccak256(abi.encodePacked("ETH-USD"));
+    bytes32 constant BTC_USD = keccak256(abi.encodePacked("BTC-USD"));
+
+    // ══════════════════════════════════════════════════════════════════════════
     //                                          ENUMS & STRUCTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -169,11 +184,13 @@ contract PositionManager is SecurityBase {
     /// @notice Mapping of trader address to their portfolio summary
     mapping(address => CommonStructs.Portfolio) public portfolios;
 
+    mapping(address => int256) public totalRealizedPnL;
+
     // /// @notice Auto-deleverage engine for risk management
     // AutoDeleverageEngine public adlEngine;
 
-    /// @notice Oracle registry contract for price feeds
-    address public oracleRegistry;
+    // /// @notice Oracle registry contract for price feeds
+    // address public oracleRegistry;
 
     /// @notice Trading engine contract (authorized caller)
     address public tradingEngine;
@@ -187,11 +204,37 @@ contract PositionManager is SecurityBase {
     /// @notice Counter for generating unique position IDs
     uint256 private _positionIdCounter;
 
-    address public fundingEngine;
+    // address public fundingEngine;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                           EVENTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    event PositionIncreased(
+    bytes32 indexed positionId,
+    address indexed trader,
+    uint256 additionalSize,
+    uint256 additionalCollateral,
+    uint256 newEntryPrice,
+    uint16 newLeverage,
+    uint256 timestamp
+);
+
+
+    event PositionDecreased(
+    bytes32 indexed positionId,
+    address indexed trader,
+    uint256 reduceSize,
+    uint256 withdrawCollateral,
+    int256 realizedPnL,
+    uint256 timestamp
+);
+
+event PnLRealized(
+    bytes32 indexed positionId,
+    address indexed trader,
+    int256 realizedPnL,
+    uint256 timestamp
+);
 
     /**
      * @notice Emitted when a new position is opened
@@ -251,12 +294,41 @@ contract PositionManager is SecurityBase {
     );
 
     /**
+ * @notice Emitted when a trader withdraws excess collateral from an open position
+ * @param positionId Unique identifier of the position
+ * @param trader Address of the position owner
+ * @param amount Amount of collateral withdrawn (in quote asset units)
+ * @param remainingCollateral Remaining collateral after withdrawal
+ * @param timestamp Block timestamp when withdrawal occurred
+ */
+event CollateralWithdrawn(
+    bytes32 indexed positionId,
+    address indexed trader,
+    uint256 amount,
+    uint256 remainingCollateral,
+    uint256 timestamp
+);
+
+    /**
      * @notice Emitted when funding is applied to a position
      * @param positionId Unique identifier for the position
      * @param fundingAmount Funding payment amount (positive = paid, negative = received)
      * @param newFundingIndex New funding index after application
      */
     event FundingPaid(bytes32 indexed positionId, int256 fundingAmount, int256 newFundingIndex);
+
+    /**
+     * @notice Emitted when funding is settled for a position
+     * @param positionId Unique identifier for the position
+     * @param fundingPayment Total funding payment settled
+     */
+    event FundingSettled(bytes32 indexed positionId, int256 fundingPayment,  uint256 timestamp);
+
+    event FeeCollected(
+    address indexed trader,
+    uint256 amount,
+    string reason
+);
 
     /**
      * @notice Emitted when a position's ADL queue status changes
@@ -321,7 +393,19 @@ contract PositionManager is SecurityBase {
     /// @notice Thrown when an operation is attempted while the Circuit Breaker is active
     error PositionManager__CircuitBroken();
 
-    error PositionManage__OnlyFundingEngine();
+    error PositionManager__OnlyFundingEngine();
+
+    error PositionManager__InvalidReduction();
+    error PositionManager__ReductionExceedsPosition(uint256 reduceSize, uint256 currentSize);
+    error PositionManager__InsufficientAllowance();
+    error PositionManager__InvalidPosition();
+    error PositionManager__InvalidTrader();
+    error PositionManager__MarketConcentrationExceeded(bytes32 marketId, uint256 currentBps, uint256 limitBps);
+    error PositionManager__MarketPositionExceedsHistory(uint256 notional, uint256 maxAllowed);
+    error PositionManager__PositionExceedsVolumeLimit(uint256 notional, uint256 maxAllowed);
+    error PositionManager__NewTraderLimitExceeded(uint256 notional, uint256 limit);
+    error PositionManager__InsufficientMarginAfterWithdrawal();
+    // error PositionManager__InvalidPosition();
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                         CONSTRUCTOR
@@ -331,26 +415,26 @@ contract PositionManager is SecurityBase {
      * @notice Initialize the PositionManager with required dependencies
      * @dev Sets up admin, oracle registry, and ADL engine. Initializes default risk configs.
      * @param _admin Protocol admin address
-     * @param _oracleRegistry Oracle registry contract address
      * @param _adlEngine Auto-deleverage engine contract address
      */
     constructor(
         address _admin,
-        address _oracleRegistry,
+        // address _oracleRegistry,
         address _adlEngine,
         address _fundingEngine,
         address _circuitBreaker,
         address _emergencyPauser,
         address _incentiveManager,
         address _feeCalculator,
-        address _marketRegistry
+        address _marketRegistry,
+        address _volumeTracker
     ) {
         // if (_admin == address(0) || _oracleRegistry == address(0) || _adlEngine == address(0))
         //     revert PositionManager__Unauthorized();
 
         // Use library functions for validation
         _admin.validateNotZero();
-        _oracleRegistry.validateContract();
+        // _oracleRegistry.validateContract();
         _adlEngine.validateContract();
         _fundingEngine.validateContract();
         _circuitBreaker.validateContract();
@@ -358,16 +442,19 @@ contract PositionManager is SecurityBase {
         _incentiveManager.validateContract();
         _feeCalculator.validateContract();
         _marketRegistry.validateContract();
+        _volumeTracker.validateContract();
+        _fundingEngine.validateContract();
 
         BaobabAdmin = _admin;
-        oracleRegistry = _oracleRegistry;
+        // oracleRegistry = _oracleRegistry;
         adlEngine = AutoDeleverageEngine(_adlEngine);
-        fundingEngine = _fundingEngine;
+        fundingEngine = FundingEngine(_fundingEngine);
         circuitBreaker = ICircuitBreaker(_circuitBreaker);
         emergencyPauser = IEmergencyPauser(_emergencyPauser);
         incentiveManager = IncentiveManager(_incentiveManager);
         feeCalculator = FeeCalculator(_feeCalculator);
         marketRegistry = MarketRegistry(_marketRegistry);
+        volumeTracker = IVolumeTracker(_volumeTracker);
 
         _setDefaultRiskConfigs();
     }
@@ -421,7 +508,7 @@ contract PositionManager is SecurityBase {
      * @notice Restrict access to only the trading engine
      * @dev Used for position opening/modification functions
      */
-    modifier onlyTradingEngine() {
+    modifier onlyPerpEngine() {
         msg.sender.validateNotZero();
         if (msg.sender != tradingEngine) revert PositionManager__OnlyTradingEngine();
         _;
@@ -449,7 +536,7 @@ contract PositionManager is SecurityBase {
 
     modifier onlyFundingEngine() {
         msg.sender.validateNotZero();
-        if (msg.sender == fundingEngine) revert PositionManage__OnlyFundingEngine();
+        if (msg.sender != address(fundingEngine)) revert PositionManager__OnlyFundingEngine();
         _;
     }
 
@@ -510,14 +597,14 @@ function setIncentiveManager(address _incentiveManager) external onlyAdmin {
         uint16 mmr,
         uint16 maxFund,
         bool fundEnabled,
-        uint256 interval
+        uint256 fundingInterval
     ) external onlyAdmin whenNotEmergencyPaused whenCircuitActivated(marketId) {
         marketConfig[marketId] = MarketConfig({
             maxLeverage: maxLev,
             mmrBps: mmr,
             maxFundingRateBps: maxFund,
             fundingEnabled: fundEnabled,
-            fundingInterval: interval
+            fundingInterval: fundingInterval
         });
     }
 
@@ -535,6 +622,7 @@ function setIncentiveManager(address _incentiveManager) external onlyAdmin {
         _tradingEngine.validateContract();
         tradingEngine = _tradingEngine;
     }
+
 
     /**
      * @notice Set the liquidation engine address
@@ -563,116 +651,164 @@ function setIncentiveManager(address _incentiveManager) external onlyAdmin {
         whenGlobalCircuitActivated
     {
         _fundingEngine.validateContract();
-        fundingEngine = _fundingEngine;
+        fundingEngine = FundingEngine(_fundingEngine);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════════════════════
     //                                    POSITION LIFECYCLE
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    /**
+     * @notice Calculate funding owed for a position based on AFPU changes
+     * @dev Uses position size and last recorded funding index to compute owed amount
+     * @param positionId Unique identifier for the position
+     * @return fundingOwed Funding payment owed (positive = pay, negative = receive)
+     */
+    function _calculateFundingOwed(bytes32 positionId) internal view returns (int256) {
+    PositionData storage posData = positions[positionId];
+    if (posData.position.openedAt == 0) return 0;
+    
+    // Get current AFPU index from FundingEngine
+    int256 currentCumulativeFee = fundingEngine.getCumulativeFunding(
+        posData.position.marketId
+        );
 
- /**
- * @notice Open a new perpetual position with integrated fee calculation and incentive tracking
- * @dev Creates a new position with comprehensive validation including leverage, margin requirements,
- *      market configuration, fee deduction, and incentive program tracking. Automatically handles
- *      collateral adjustment for fees and records trade volume for reward programs.
- * @param trader Address of the position owner (must not be zero address)
- * @param marketId Market identifier (must correspond to an active market)
- * @param side LONG or SHORT position direction (determines profit/loss calculation)
- * @param size Position size in base asset units (must be > 0)
- * @param collateral Collateral amount in quote asset units (must cover fees + margin)
- * @param entryPrice Entry price in quote asset units (must be > 0 and reasonable)
- * @param leverage Leverage multiplier (e.g., 10 for 10x, must not exceed market maximum)
- * @return positionId Unique identifier for the created position (keccak256 hash)
- *
- * @dev Flow:
- * 1. Validate input parameters (non-zero size/collateral, valid market)
- * 2. Check market is active and configured with valid risk parameters
- * 3. Verify leverage doesn't exceed market maximum allowed
- * 4. Calculate taker trading fee and deduct from collateral
- * 5. Validate remaining collateral meets initial margin requirement
- * 6. Generate unique position ID using counter and timestamp
- * 7. Calculate liquidation price based on market maintenance margin ratio
- * 8. Store position data and update trader/market mappings
- * 9. Update open interest and portfolio metrics
- * 10. Record trade volume for incentive rewards (if program active)
- * 11. Initialize position in ADL system with zero PnL
- * 12. Emit PositionOpened and ADLQueueStatusChanged events
- *
- * @dev Requirements:
- * - Caller must be trading engine (onlyTradingEngine modifier)
- * - Market must be active and properly configured
- * - Leverage must not exceed market maximum allowed
- * - Collateral must cover trading fees + initial margin requirement
- * - Size must be positive and within market limits
- * - Global circuit breaker must be active (whenCircuitActivated modifier)
- * - No reentrancy allowed (nonReentrant modifier)
- *
- * @dev Emits:
- * - {PositionOpened} event with position details on success
- * - {ADLQueueStatusChanged} event indicating position not in ADL queue
- * - {TradeRecorded} event via IncentiveManager if program active
- *
- * @dev Reverts with:
- * - PositionManager__InvalidSize if size == 0
- * - PositionManager__InsufficientCollateral if collateral == 0
- * - PositionManager__MarketNotConfigured if market is inactive
- * - PositionManager__LeverageExceedsMax if leverage > market maximum
- * - InsufficientCollateralForFees if takerFee > collateral
- * - PositionManager__InsufficientInitialMargin if collateral < required initial margin
- */
+    //    (,, int256 currentCumulative) = fundingEngine.readFundingState(posData.position.marketId);
+
+    
+    // Funding owed = (Current index - Last recorded index) × Position size
+    int256 fundingOwed = (currentCumulativeFee - posData.position.lastCumulativeFunding) 
+        * int256(posData.position.size) / int256(1e18); // Divide by precision
+    
+    // Adjust for position side
+    // Positive funding rate = longs pay shorts
+    if (posData.position.side == CommonStructs.Side.LONG) {
+        return fundingOwed;  // Long pays positive funding
+    } else {
+        return -fundingOwed; // Short receives (negative means credit)
+    }
+}
+
+    /**
+     * @notice Settle funding payments for a position
+     * @dev Calculates funding owed and adjusts position collateral accordingly
+     * @param positionId Unique identifier for the position
+     * @return fundingPayment Total funding payment settled (positive = paid, negative = received)
+     *
+     * Requirements:
+     * - Caller must be the FundingEngine
+     * - Position must exist
+     *
+     * Emits {FundingSettled} event on success
+     */
+ function settlePositionFunding(bytes32 positionId) 
+    public
+    onlyPerpEngine
+    returns (int256 fundingPayment) 
+{
+    PositionData storage posData = positions[positionId];
+    require(posData.position.openedAt != 0, "Position not found");
+    
+    // Calculate funding
+    fundingPayment = _calculateFundingOwed(positionId);
+    
+    //  Apply to collateral (internal accounting)
+    if (fundingPayment > 0) {
+        posData.position.collateral -= uint256(fundingPayment);  // OWES
+    } else if (fundingPayment < 0) {
+        posData.position.collateral += uint256(-fundingPayment); // RECEIVES
+    }
+    
+    // Update AFPU snapshot
+    posData.position.lastCumulativeFunding = 
+        fundingEngine.getCumulativeFunding(posData.position.marketId);
+    
+    emit FundingSettled(positionId, fundingPayment, block.timestamp);
+    return fundingPayment;
+}
+
+
 function openPosition(
     address trader,
     bytes32 marketId,
     CommonStructs.Side side,
+    CommonStructs.Position memory position,
     uint256 size,
     uint256 collateral,
     uint256 entryPrice,
     uint16 leverage
-) external onlyTradingEngine whenCircuitActivated(marketId) nonReentrant returns (bytes32 positionId) {
-    // Validate basic input parameters
+) external onlyPerpEngine whenCircuitActivated(marketId) nonReentrant returns (bytes32 positionId) {
+    
+    //  CommonStructs.Position storage position = positionData.position;
+     position.lastCumulativeFunding = fundingEngine.getCumulativeFunding(marketId);
+    // Basic validation
     if (size == 0) revert PositionManager__InvalidSize();
     if (collateral == 0) revert PositionManager__InsufficientCollateral();
 
-    // Retrieve market risk configuration and validate market is active
+    // Get market config and validate
     MarketRiskConfig memory config = marketRiskConfigs[marketId];
     if (!config.isActive) revert PositionManager__MarketNotConfigured();
-
-    // Verify leverage does not exceed market maximum allowed
     if (leverage > config.maxLeverage) revert PositionManager__LeverageExceedsMax();
 
-    // Calculate position notional value (size × price)
+    // Calculate notional and check limits
+    // Calculates the total value of the position (notional) and ensures it respects volume and market-specific limits.
     uint256 notional = (size * entryPrice) / 1e18;
+    _checkVolumeBasedLimits(trader, marketId, notional);
+    _checkMarketSpecificLimits(trader, marketId, notional);
 
-    // Calculate taker fee for opening a new position
-    // Get quote asset from MarketRegistry for FeeCalculator integration
+    // Calculate and deduct fees
+    // This shouldnt be handled by PostionManager but for now we do it here
     address quoteAsset = marketRegistry.getQuoteAsset(marketId);
-    uint256 takerFee = feeCalculator.calculateTradingFeeTaker(quoteAsset, trader, notional);
-
-    // Validate collateral covers taker fee
-    if (takerFee > collateral) revert PositionManager__InsufficientCollateralForFee();
+    uint256 takerFee = feeCalculator.calculateTradingFeeTaker(
+        quoteAsset, 
+        trader, 
+        notional
+        );
     
-    // Deduct fee from collateral before margin check
+    if (takerFee > collateral) revert PositionManager__InsufficientCollateralForFee();
     collateral -= takerFee;
 
-    // Calculate initial margin requirement and validate remaining collateral
-    uint256 requiredIM = (notional * config.initialMarginBps) / 10000;
-    if (collateral < requiredIM) revert PositionManager__InsufficientInitialMargin();
+    // Check margin requirements
+    // Ensures the collateral left after fees is enough for initial margin.
+    uint256 requiredInitialMargins = (notional * config.initialMarginBps) / 10000;
+    if (collateral < requiredInitialMargins) revert PositionManager__InsufficientInitialMargin();
 
-    // Record trade volume for incentive rewards if incentive manager is configured
+    // Record trade volume
+    // Tracks trade volume for incentive programs if applicable.
+    if (address(volumeTracker) != address(0)) {
+        volumeTracker.recordTrade(
+            trader, 
+            marketId, 
+            notional
+            );
+    }
     if (address(incentiveManager) != address(0)) {
         incentiveManager.recordTrade(trader, notional);
     }
 
-    // Generate unique position ID using counter, timestamp, and trader details
-    positionId = keccak256(abi.encodePacked(trader, marketId, _positionIdCounter++, block.timestamp));
+    // Generate position 
+    // Creates a unique position ID and initializes the position data structure.
+    // Unique ID for the position, and ownership tracking.
+    positionId = keccak256(abi.encodePacked(
+        trader, 
+        marketId, 
+        _positionIdCounter++, 
+        block.timestamp
+        ));
 
-    // Store position owner mapping for ownership verification
     positionOwner[positionId] = trader;
 
-    // Calculate liquidation price based on market MMR, position details
-    uint256 liqPrice = _calculateLiquidationPrice(marketId, side, entryPrice, collateral, size);
+    // Calculate liquidation price
+    // Determines the price at which the position would be liquidated based on maintenance margin.
+    // Calculates where the position will be liquidated based on risk parameters.
+    uint256 liquidPrice = _calculateLiquidationPrice(
+        marketId, 
+        side, 
+        entryPrice, 
+        collateral, 
+        size
+        );
 
-    // Create position struct with all required fields
+    // Create position
     CommonStructs.Position memory pos = CommonStructs.Position({
         positionId: positionId,
         marketId: marketId,
@@ -682,89 +818,51 @@ function openPosition(
         collateral: collateral,
         entryPrice: entryPrice,
         leverage: leverage,
-        lastFundingIndex: 0,  // Initialize with zero funding
-        unrealizedPnL: 0,     // Zero PnL at position opening
-        liquidationPrice: liqPrice,
+        lastFundingIndex: 0,
+        lastCumulativeFunding: fundingEngine.getCumulativeFunding(marketId), 
+        unrealizedPnL: 0,
+        liquidationPrice: liquidPrice,
         openedAt: block.timestamp
     });
 
-    // Store position data with initialized state
+    // Store position data
     positions[positionId] = PositionData({
         position: pos,
         lastUpdateTime: block.timestamp,
-        accumulatedFunding: 0,    // No accumulated funding yet
-        isLiquidatable: false,    // Position just opened, not liquidatable
-        inADLQueue: false         // Not in ADL queue initially
+        accumulatedFunding: 0,
+        isLiquidatable: false,
+        inADLQueue: false
     });
 
-    // Update position mappings for trader and market
+    // Update mappings
     userPositions[trader].push(positionId);
     marketPositions[marketId].push(positionId);
-    
-    // Update market open interest (total size for this side)
     openInterest[marketId][side] += size;
 
-    // Update trader's portfolio metrics for risk assessment
+    // Update systems
     _updatePortfolio(trader);
-
-    // Initialize position in ADL system with zero PnL (won't be added to queue)
     adlEngine.updateADLQueue(
-        marketId,
-        positionId,
-        trader,
-        side,
-        0,                     // Zero unrealized PnL - won't be added to ADL queue
+        marketId, 
+        positionId, 
+        trader, 
+        side, 0, 
         leverage
-    );
+        );
 
-    // Emit events for position opening and ADL status
-    emit PositionOpened(positionId, trader, marketId, side, size, entryPrice, leverage);
+    // Emit events
+    emit PositionOpened(
+        positionId, 
+        trader, 
+        marketId, 
+        side, 
+        size, 
+        entryPrice, 
+        leverage
+        );
+
     emit ADLQueueStatusChanged(positionId, false, 0);
 }
 
- /**
- * @notice Modify an existing position's size or collateral with integrated fee calculation
- * @dev Allows increasing/decreasing position size or adding/removing collateral. When increasing
- *      position size, calculates taker fees and deducts from collateral. Records trade volume
- *      for incentive programs. When decreasing size, realizes proportional PnL.
- * @param positionId Unique identifier of the position to modify
- * @param sizeDelta Change in position size (positive = increase, negative = decrease)
- * @param collateralDelta Change in collateral (positive = add, negative = remove)
- * @param currentPrice Current market price for PnL calculation (must be valid price feed)
- * @return realizedPnL Realized profit/loss from the modification (negative = loss, positive = profit)
- *
- * @dev Flow:
- * 1. Validate position exists and retrieve position data
- * 2. Calculate current unrealized PnL based on current price
- * 3. Process size delta:
- *    - If increasing: calculate taker fee, deduct from collateral, record trade for incentives
- *    - If decreasing: realize proportional PnL, update position size
- * 4. Process collateral delta (add or remove)
- * 5. Recalculate liquidation price with new parameters
- * 6. Update position state and timestamp
- * 7. Update portfolio summary
- * 8. Emit PositionModified event
- *
- * @dev Requirements:
- * - Caller must be trading engine (onlyTradingEngine modifier)
- * - Position must exist and be active
- * - Contract must not be emergency paused
- * - Global circuit breaker must be active
- * - No reentrancy allowed
- * - Size reduction cannot exceed current position size
- * - Collateral removal cannot exceed available collateral
- * - Sufficient collateral must cover taker fees for size increases
- *
- * @dev Emits:
- * - {PositionModified} event with updated size, collateral, and realized PnL
- * - {TradeRecorded} event via IncentiveManager if size increased and program active
- *
- * @dev Reverts with:
- * - PositionManager__PositionNotFound if position doesn't exist
- * - PositionManager__InvalidSize if size reduction exceeds current size
- * - PositionManager__InsufficientCollateralForFees if collateral insufficient for taker fees
- * - PositionManager__InsufficientCollateral if collateral removal exceeds available
- */
 function modifyPosition(
     bytes32 positionId,
     int256 sizeDelta,
@@ -772,94 +870,73 @@ function modifyPosition(
     uint256 currentPrice
 )
     external
-    onlyTradingEngine
+    onlyPerpEngine
     nonReentrant
     whenNotEmergencyPaused
     whenGlobalCircuitActivated
     returns (int256 realizedPnL)
 {
-    // Retrieve position data and validate position exists
+     settlePositionFunding(positionId);
+
     PositionData storage posData = positions[positionId];
     if (posData.position.openedAt == 0) revert PositionManager__PositionNotFound();
 
     CommonStructs.Position storage pos = posData.position;
-    
-    // Calculate current unrealized PnL for potential realization on partial close
     int256 currentPnL = _calculateUnrealizedPnL(pos, currentPrice);
 
-    // Process size adjustment (increase or decrease)
+    // Handle size changes
     if (sizeDelta != 0) {
         if (sizeDelta > 0) {
-            // ============================================
-            // INCREASING POSITION SIZE (NEW ENTRY)
-            // ============================================
-            
-            // Calculate notional value of size increase
+            // Increase position
             uint256 notional = (uint256(sizeDelta) * currentPrice) / 1e18;
             
-            // Calculate taker fee for the new position entry
-            // Get quote asset from MarketRegistry for FeeCalculator integration
+            // Check volume limits for increase
+            _checkVolumeBasedLimits(pos.trader, pos.marketId, notional);
+            _checkMarketSpecificLimits(pos.trader, pos.marketId, notional);
+
+            // Calculate and deduct fees
             address quoteAsset = marketRegistry.getQuoteAsset(pos.marketId);
             uint256 takerFee = feeCalculator.calculateTradingFeeTaker(quoteAsset, pos.trader, notional);
-
-            // Validate sufficient collateral to cover taker fee
-            if (takerFee > pos.collateral) revert PositionManager__InsufficientCollateralForFee();
             
-            // Deduct taker fee from position collateral
+            if (takerFee > pos.collateral) revert PositionManager__InsufficientCollateralForFee();
             pos.collateral -= takerFee;
 
-            // Record trade volume for incentive rewards if incentive manager is configured
+            // Record trade volume
+            if (address(volumeTracker) != address(0)) {
+                volumeTracker.recordTrade(pos.trader, pos.marketId, notional);
+            }
             if (address(incentiveManager) != address(0)) {
                 incentiveManager.recordTrade(pos.trader, notional);
             }
 
-            // Update position size and market open interest
+            // Update position size
             pos.size += uint256(sizeDelta);
             openInterest[pos.marketId][pos.side] += uint256(sizeDelta);
         } else {
-            // ============================================
-            // DECREASING POSITION SIZE (PARTIAL CLOSE)
-            // ============================================
-            
+            // Decrease position
             uint256 reduction = uint256(-sizeDelta);
-            
-            // Validate reduction doesn't exceed current position size
             if (reduction > pos.size) revert PositionManager__InvalidSize();
-
-            // Calculate proportion of position being closed
-            uint256 proportion = (reduction * 1e18) / pos.size;
             
-            // Realize proportional PnL (profit/loss)
+            uint256 proportion = (reduction * 1e18) / pos.size;
             realizedPnL = (currentPnL * int256(proportion)) / 1e18;
 
-            // Update position size and market open interest
             pos.size -= reduction;
             openInterest[pos.marketId][pos.side] -= reduction;
         }
     }
 
-    // Process collateral adjustment (add or remove)
+    // Handle collateral changes
     if (collateralDelta != 0) {
         if (collateralDelta > 0) {
-            // ============================================
-            // ADDING COLLATERAL
-            // ============================================
             pos.collateral += uint256(collateralDelta);
         } else {
-            // ============================================
-            // REMOVING COLLATERAL
-            // ============================================
             uint256 withdrawal = uint256(-collateralDelta);
-            
-            // Validate withdrawal doesn't exceed available collateral
             if (withdrawal > pos.collateral) revert PositionManager__InsufficientCollateral();
-            
-            // Deduct collateral from position
             pos.collateral -= withdrawal;
         }
     }
 
-    // Recalculate liquidation price with updated position parameters
+    // Update position state
     pos.liquidationPrice = _calculateLiquidationPrice(
         pos.marketId,
         pos.side,
@@ -868,133 +945,132 @@ function modifyPosition(
         pos.size
     );
 
-    // Update position metadata and state
     posData.lastUpdateTime = block.timestamp;
     _updatePositionState(positionId, currentPrice);
 
-    // Emit event with updated position details
     emit PositionModified(positionId, pos.size, pos.collateral, realizedPnL);
 }
 
 
-/**
- * @notice Close a position completely (regular close) with integrated fee calculation
- * @dev Closes the entire position, calculates final PnL, deducts maker fees, records trade volume
- *      for incentives, updates open interest, and cleans up position data. Also removes position
- *      from ADL queue if present and updates user portfolio.
- * @param positionId Unique identifier of the position to close
- * @param closePrice Price to close at (must be valid market price)
- * @return realizedPnL Final realized profit/loss after fees (negative = loss, positive = profit)
- *
- * @dev Flow:
- * 1. Validate position exists and retrieve position data
- * 2. Calculate final unrealized PnL based on close price
- * 3. Calculate trade notional value for fee and incentive calculations
- * 4. Calculate maker fee (closing = maker order)
- * 5. Deduct fee from realized PnL or collateral (if PnL insufficient)
- * 6. Record trade volume for incentive rewards if program active
- * 7. Update market open interest by removing position size
- * 8. Remove position from user's position list
- * 9. Remove from ADL queue if present and update status
- * 10. Emit PositionClosed event with final details
- * 11. Delete position data from storage to free gas
- * 12. Update user's portfolio summary
- *
- * @dev Requirements:
- * - Caller must be trading engine (onlyTradingEngine modifier)
- * - Position must exist and be active
- * - Contract must not be emergency paused
- * - Global circuit breaker must be active
- * - No reentrancy allowed
- * - Position must not already be liquidated
- *
- * @dev Emits:
- * - {PositionClosed} event with position details and final PnL
- * - {ADLQueueStatusChanged} event if position was in ADL queue
- * - {TradeRecorded} event via IncentiveManager if program active
- *
- * @dev Reverts with:
- * - PositionManager__PositionNotFound if position doesn't exist
- * - PositionManager__InsufficientCollateral if fee deduction exceeds available collateral
- */
+// ============================================================================
+// POSITION MODIFICATION FUNCTIONS
+// ============================================================================
+
+function increasePosition(
+    bytes32 positionId,
+    uint256 additionalSize,
+    uint256 additionalCollateral,
+    uint256 currentPrice
+) 
+    external 
+    onlyPerpEngine
+    whenNotEmergencyPaused
+    nonReentrant 
+{
+     // Settle funding BEFORE increase
+    settlePositionFunding(positionId);
+    _validateIncreaseInputs(additionalSize, additionalCollateral);
+    
+    PositionData storage positionData = positions[positionId];
+    CommonStructs.Position storage position = positionData.position;
+    _validatePositionForIncrease(positionId, position);
+    
+    _processPositionIncrease(
+        positionId, 
+        positionData, 
+        position,
+        additionalSize, 
+        additionalCollateral, 
+        currentPrice
+        );
+}
+
+function decreasePosition(
+    bytes32 positionId,
+    uint256 reduceSize,
+    uint256 withdrawCollateral
+)
+    external
+    onlyPerpEngine
+    whenNotEmergencyPaused
+    nonReentrant
+{
+     // Settle funding BEFORE increase
+    settlePositionFunding(positionId);
+    _validateDecreaseInputs(reduceSize, withdrawCollateral);
+    
+    PositionData storage positionData = positions[positionId];
+    CommonStructs.Position storage position = positionData.position;
+    _validatePositionForDecrease(positionId, position, reduceSize);
+    
+    _processPositionDecrease(
+        positionId, 
+        positionData, 
+        position, 
+        reduceSize, 
+        withdrawCollateral
+        );
+}
+
+// ============================================================================
+// POSITION CLOSING FUNCTIONS
+// ============================================================================
+
 function closePosition(bytes32 positionId, uint256 closePrice)
     external
-    onlyTradingEngine
+    onlyLiquidationEngine
     nonReentrant
     whenNotEmergencyPaused
     whenGlobalCircuitActivated
     returns (int256 realizedPnL)
 {
-    // Retrieve position data and validate position exists
+      // Settle funding BEFORE increase
+    settlePositionFunding(positionId);
+
     PositionData storage posData = positions[positionId];
     if (posData.position.openedAt == 0) revert PositionManager__PositionNotFound();
 
     CommonStructs.Position storage pos = posData.position;
     
-    // ============================================
-    // CALCULATE FINAL PNL AND FEES
-    // ============================================
-    
-    // Calculate final unrealized PnL based on close price
+    // Calculate final PnL
     int256 finalPnL = _calculateUnrealizedPnL(pos, closePrice);
-    
-    // Calculate trade notional value for fee and incentive calculations
     uint256 notional = (pos.size * closePrice) / 1e18;
+
+    // Record close volume
+    if (address(volumeTracker) != address(0)) {
+        volumeTracker.recordTrade(pos.trader, pos.marketId, notional);
+    }
     
-    // Calculate maker fee (closing position acts as maker order)
-    // Get quote asset from MarketRegistry for FeeCalculator integration
+    // Calculate maker fee
     address quoteAsset = marketRegistry.getQuoteAsset(pos.marketId);
-    int256 makerFeeRebate = feeCalculator.calculateTradingFeeMaker(quoteAsset, pos.trader, notional);
-    
-    // Convert to absolute fee (negative = rebate, positive = fee)
+    int256 makerFeeRebate = feeCalculator.calculateTradingFeeMaker(
+        quoteAsset, 
+        pos.trader, 
+        notional
+        );
+        
     uint256 makerFee = makerFeeRebate >= 0 ? uint256(makerFeeRebate) : 0;
 
-    // ============================================
-    // DEDUCT FEES FROM PNL OR COLLATERAL
-    // ============================================
-    
-    // Initialize realized PnL as final PnL minus fees
+    // Deduct fees from PnL or collateral
     if (finalPnL >= int256(makerFee)) {
-        // Fee can be fully covered by profit
         realizedPnL = finalPnL - int256(makerFee);
     } else {
-        // Fee exceeds profit, deduct remaining from collateral
         uint256 additionalFee = uint256(int256(makerFee) - finalPnL);
-        
-        // Validate sufficient collateral to cover additional fee
-        if (additionalFee > pos.collateral) {
-            revert PositionManager__InsufficientCollateral();
-        }
-        
-        // Deduct from collateral and set realized PnL to zero (or negative if loss)
+        if (additionalFee > pos.collateral) revert PositionManager__InsufficientCollateral();
         pos.collateral -= additionalFee;
-        realizedPnL = finalPnL - int256(makerFee); // This will be negative or zero
+        realizedPnL = finalPnL - int256(makerFee);
     }
 
-    // ============================================
-    // RECORD TRADE FOR INCENTIVE REWARDS
-    // ============================================
-    
+    // Record for incentives
     if (address(incentiveManager) != address(0)) {
         incentiveManager.recordTrade(pos.trader, notional);
     }
 
-    // ============================================
-    // UPDATE MARKET OPEN INTEREST
-    // ============================================
-    
-    // Reduce market open interest by the position size
+    // Update open interest
     openInterest[pos.marketId][pos.side] -= pos.size;
 
-    // ============================================
-    // REMOVE POSITION FROM USER'S POSITION LIST
-    // ============================================
-    
+    // Clean up position data
     _removeUserPosition(pos.trader, positionId);
-
-    // ============================================
-    // HANDLE ADL QUEUE IF POSITION WAS IN QUEUE
-    // ============================================
     
     if (posData.inADLQueue) {
         adlEngine.removeFromADLQueue(pos.marketId, positionId, pos.side);
@@ -1002,332 +1078,792 @@ function closePosition(bytes32 positionId, uint256 closePrice)
         emit ADLQueueStatusChanged(positionId, false, 0);
     }
 
-    // ============================================
-    // EMIT CLOSURE EVENT
-    // ============================================
-    
     emit PositionClosed(positionId, pos.trader, closePrice, realizedPnL, false);
-
-    // ============================================
-    // CLEAN UP POSITION DATA
-    // ============================================
-    
-    // Delete position data to recover gas (only after all reads are complete)
     delete positions[positionId];
-
-    // ============================================
-    // UPDATE USER PORTFOLIO
-    // ============================================
-    
     _updatePortfolio(pos.trader);
 
     return realizedPnL;
 }
-    /**
-     * @notice Force close a position (called by ADL engine)
-     * @param positionId Position to close
-     * @param executionPrice Price to close at
-     * @param isLiquidation Whether this is a liquidation
-     * @dev Only callable by ADL engine or liquidation engine
-     */
-    function forceClosePosition(bytes32 positionId, uint256 executionPrice, bool isLiquidation)
-        external
-        nonReentrant
-        whenNotEmergencyPaused
-        whenGlobalCircuitActivated
-        returns (int256 realizedPnL)
-    {
-        // Only ADL engine or liquidation engine can call this
-        if (msg.sender != address(adlEngine) && msg.sender != liquidationEngine) {
-            revert PositionManager__Unauthorized();
-        }
 
-        PositionData storage posData = positions[positionId];
-        if (posData.position.openedAt == 0) revert PositionManager__PositionNotFound();
+function forceClosePosition(bytes32 positionId, uint256 executionPrice, bool isLiquidation)
+    external
+    nonReentrant
+    whenNotEmergencyPaused
+    whenGlobalCircuitActivated
+    returns (int256 realizedPnL)
+{
 
-        CommonStructs.Position storage pos = posData.position;
+    settlePositionFunding(positionId);
 
-        // Calculate final PnL
-        realizedPnL = _calculateUnrealizedPnL(pos, executionPrice);
-
-        // Update open interest
-        openInterest[pos.marketId][pos.side] -= pos.size;
-
-        // Remove from user positions
-        _removeUserPosition(pos.trader, positionId);
-
-        // Remove from ADL queue if present
-        if (posData.inADLQueue) {
-            adlEngine.removeFromADLQueue(pos.marketId, positionId, pos.side);
-            posData.inADLQueue = false;
-            emit ADLQueueStatusChanged(positionId, false, 0);
-        }
-
-        // Emit closure event
-        emit PositionClosed(positionId, pos.trader, executionPrice, realizedPnL, isLiquidation);
-
-        // Clean up position data
-        delete positions[positionId];
-
-        // Update portfolio
-        _updatePortfolio(pos.trader);
-
-        return realizedPnL;
-    }
-
-    /**
-     * @notice Update position state and ADL queue
-     * @param positionId Position to update
-     * @param currentPrice Current market price
-     * @dev Callable by keepers or frontend
-     */
-    function updatePositionState(bytes32 positionId, uint256 currentPrice)
-        external
-        whenNotEmergencyPaused
-        whenGlobalCircuitActivated
-    {
-        _updatePositionState(positionId, currentPrice);
-    }
-
-    // Update the accumulated funding for a given position ID
-    function updateAccumulatedFunding(bytes32 posId, int256 newAccumulatedFunding)
-        external
-        onlyFundingEngine
-        whenGlobalCircuitActivated
-        whenNotEmergencyPaused
-    {
-        PositionData storage positionData = positions[posId];
-        positionData.accumulatedFunding = newAccumulatedFunding;
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
-    //                                    INTERNAL FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
-
-    /**
-     * @notice Internal position state update with ADL integration
-     * @param positionId Position to update
-     * @param currentPrice Current market price
-     * @dev Called by updatePositionState, modifyPosition, closePosition
-     */
-    function _updatePositionState(bytes32 positionId, uint256 currentPrice) internal {
-        PositionData storage posData = positions[positionId];
-        if (posData.position.openedAt == 0) return;
-
-        CommonStructs.Position storage pos = posData.position;
-
-        // Update unrealized PnL
-        int256 unrealizedPnL = _calculateUnrealizedPnL(pos, currentPrice);
-        pos.unrealizedPnL = unrealizedPnL;
-
-        // Update liquidation status
-        bool shouldBeLiquidatable = (pos.side == CommonStructs.Side.LONG && currentPrice <= pos.liquidationPrice)
-            || (pos.side == CommonStructs.Side.SHORT && currentPrice >= pos.liquidationPrice);
-
-        posData.isLiquidatable = shouldBeLiquidatable;
-
-        posData.lastUpdateTime = block.timestamp;
-
-        // === ADL Queue Logic ===
-        if (unrealizedPnL > 0) {
-            uint256 pnlUint = uint256(unrealizedPnL);
-            uint256 adlScore = pnlUint * pos.leverage;
-
-            adlEngine.updateADLQueue(pos.marketId, positionId, pos.trader, pos.side, pnlUint, pos.leverage);
-
-            if (!posData.inADLQueue) {
-                posData.inADLQueue = true;
-                emit ADLQueueStatusChanged(positionId, true, adlScore);
-            }
-        } else {
-            if (posData.inADLQueue) {
-                adlEngine.removeFromADLQueue(pos.marketId, positionId, pos.side);
-                posData.inADLQueue = false;
-                emit ADLQueueStatusChanged(positionId, false, 0);
-            }
-        }
-    }
-
-    /**
-     * @notice Calculate liquidation price for a position
-     * @dev Uses market-specific MMR to determine price level where position becomes under-collateralized
-     * Formula for LONG: LiqPrice = EntryPrice - (Collateral - MMR) / Size
-     * Formula for SHORT: LiqPrice = EntryPrice + (Collateral - MMR) / Size
-     * @param marketId Market identifier for risk parameters
-     * @param side Position direction (LONG/SHORT)
-     * @param entryPrice Position entry price
-     * @param collateral Collateral amount
-     * @param size Position size
-     * @return liqPrice Calculated liquidation price
-     */
-    function _calculateLiquidationPrice(
-        bytes32 marketId,
-        CommonStructs.Side side,
-        uint256 entryPrice,
-        uint256 collateral,
-        uint256 size
-    ) internal view returns (uint256 liqPrice) {
-        if (size == 0) return side == CommonStructs.Side.LONG ? 0 : type(uint256).max;
-
-        MarketRiskConfig memory config = marketRiskConfigs[marketId];
-        uint16 mmrBps = config.maintenanceMarginBps > 0 ? config.maintenanceMarginBps : 50; // default 0.5%
-
-        uint256 notional = (size * entryPrice) / 1e18;
-        uint256 mmr = (notional * mmrBps) / 10000;
-
-        if (collateral <= mmr) {
-            return side == CommonStructs.Side.LONG ? 0 : type(uint256).max;
-        }
-
-        uint256 buffer = collateral - mmr;
-        uint256 priceMove = (buffer * 1e18) / size;
-
-        if (side == CommonStructs.Side.LONG) {
-            liqPrice = priceMove >= entryPrice ? 1 : entryPrice - priceMove;
-        } else {
-            liqPrice = priceMove > type(uint256).max - entryPrice ? type(uint256).max : entryPrice + priceMove;
-        }
-    }
-
-    /**
-     * @notice Calculate unrealized PnL for a position
-     * @dev Computes profit/loss based on current price vs entry price
-     * For LONG: PnL = (CurrentPrice - EntryPrice) * Size
-     * For SHORT: PnL = (EntryPrice - CurrentPrice) * Size
-     * @param pos Position storage reference
-     * @param price Current market price
-     * @return pnl Unrealized profit/loss (positive = profit, negative = loss)
-     */
-    function _calculateUnrealizedPnL(CommonStructs.Position storage pos, uint256 price)
-        internal
-        view
-        returns (int256)
-    {
-        int256 diff = pos.side == CommonStructs.Side.LONG
-            ? int256(price) - int256(pos.entryPrice)
-            : int256(pos.entryPrice) - int256(price);
-        return (diff * int256(pos.size)) / 1e18;
-    }
-
-    /**
-     * @notice Update trader's portfolio summary
-     * @dev Aggregates collateral, PnL, and position count across all trader positions
-     * @param trader Address of the trader to update
-     */
-    function _updatePortfolio(address trader) internal {
-        bytes32[] memory ids = userPositions[trader];
-        uint256 totalCol = 0;
-        int256 totalPnL = 0;
-        uint256 count = 0;
-
-        for (uint256 i = 0; i < ids.length; i++) {
-            PositionData storage pd = positions[ids[i]];
-            if (pd.position.openedAt == 0) continue;
-            totalCol += pd.position.collateral;
-            totalPnL += pd.position.unrealizedPnL;
-            count++;
-        }
-
-        uint256 marginRatio =
-            totalCol > 0 ? ((totalCol + uint256(totalPnL > 0 ? totalPnL : int256(0))) * 10000) / totalCol : 0;
-
-        portfolios[trader] = CommonStructs.Portfolio({
-            trader: trader,
-            totalCollateral: totalCol,
-            totalUnrealizedPnL: totalPnL,
-            marginRatio: marginRatio,
-            positionCount: count,
-            lastUpdateTime: block.timestamp
-        });
-    }
-
-    /**
-     * @notice Remove a position from a trader's position list
-     * @dev Used when closing positions to clean up storage
-     * @param trader Address of the trader
-     * @param positionId ID of the position to remove
-     */
-    function _removeUserPosition(address trader, bytes32 positionId) internal {
-        bytes32[] storage list = userPositions[trader];
-        for (uint256 i = 0; i < list.length; i++) {
-            if (list[i] == positionId) {
-                list[i] = list[list.length - 1];
-                list.pop();
-                break;
-            }
-        }
-    }
-
-    /**
-     * @notice Set default risk configurations for common markets
-     * @dev Can be extended to pre-configure known markets on deployment
-     */
-    function _setDefaultRiskConfigs() internal {
-        // Defaults - can be extended with specific market configurations
-        // Example: marketRiskConfigs[keccak256("BTC-USD")] = MarketRiskConfig(...)
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
-    //                                      VIEW FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
-
-    /**
-     * @notice Get full position data by ID
-     * @param positionId Unique position identifier
-     * @return PositionData structure containing position details and state
-     */
-    function getPosition(bytes32 positionId) external view returns (PositionData memory) {
-        return positions[positionId];
+    // Only ADL engine or liquidation engine can call this
+    if (msg.sender != address(adlEngine) && msg.sender != liquidationEngine) {
+        revert PositionManager__Unauthorized();
     }
     
-    /**
-     * @notice Get the owner of a position by ID
-     * @param positionId Unique position identifier
-     * @return Address of the position owner
-     */
-    function getPositionOwner(bytes32 positionId) external view returns (address) {
-    return positionOwner[positionId];
+    PositionData storage posData = positions[positionId];
+    if (posData.position.openedAt == 0) revert PositionManager__PositionNotFound();
+
+    CommonStructs.Position storage pos = posData.position;
+    realizedPnL = _calculateUnrealizedPnL(pos, executionPrice);
+
+    // Update open interest
+    openInterest[pos.marketId][pos.side] -= pos.size;
+    
+    // Clean up position data
+    _removeUserPosition(pos.trader, positionId);
+    
+    if (posData.inADLQueue) {
+        adlEngine.removeFromADLQueue(pos.marketId, positionId, pos.side);
+        posData.inADLQueue = false;
+        emit ADLQueueStatusChanged(positionId, false, 0);
+    }
+
+    emit PositionClosed(positionId, pos.trader, executionPrice, realizedPnL, isLiquidation);
+    delete positions[positionId];
+    _updatePortfolio(pos.trader);
+
+    return realizedPnL;
+}
+
+// ============================================================================
+// POSITION STATE FUNCTIONS
+// ============================================================================
+
+function updatePositionState(bytes32 positionId, uint256 currentPrice)
+    external
+    onlyPerpEngine
+    whenNotEmergencyPaused
+    whenGlobalCircuitActivated
+{
+    _updatePositionState(positionId, currentPrice);
+}
+
+function updateAccumulatedFunding(bytes32 posId, int256 newAccumulatedFunding)
+    external
+    onlyFundingEngine
+    whenGlobalCircuitActivated
+    whenNotEmergencyPaused
+{
+    PositionData storage positionData = positions[posId];
+    positionData.accumulatedFunding = newAccumulatedFunding;
 }
 
 
-    /**
-     * @notice Get position size by ID
-     * @param positionId Unique position identifier
-     * @return size Current position size in base asset units
-     */
-    function getPositionSize(bytes32 positionId) external view returns (uint256) {
-        return positions[positionId].position.size;
+// ============================================================================
+// INTERNAL HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * @notice Internal function to completely close a position during size reduction
+ * @dev Handles full position closure when reduceSize brings size to zero.
+ *      Updates open interest, removes from mappings/ADL queue, emits events,
+ *      deletes position storage, and updates portfolio. Called from _processPositionDecrease.
+ * @param positionId Unique position identifier
+ * @param trader Address of the position owner
+ * @param realizedPnL Realized profit/loss from the closure
+ */
+function _closePositionCompletely(
+    bytes32 positionId,
+    address trader,
+    int256 realizedPnL
+) internal {
+    PositionData storage posData = positions[positionId];
+    CommonStructs.Position storage pos = posData.position;
+    
+    // Update open interest (size already reduced to 0 in _handleSizeReduction)
+    if (pos.size > 0) {  // Safety check
+        openInterest[pos.marketId][pos.side] -= pos.size;
+    }
+    
+    // Calculate close price (use current price or entry price as fallback)
+    uint256 closePrice = pos.entryPrice;  // Fallback - ideally pass currentPrice as param
+    
+    // Record close volume for incentives/tracking
+    uint256 closeNotional = (pos.size * closePrice) / 1e18;
+    if (address(volumeTracker) != address(0)) {
+        volumeTracker.recordTrade(trader, pos.marketId, closeNotional);
+    }
+    if (address(incentiveManager) != address(0)) {
+        incentiveManager.recordTrade(trader, closeNotional);
+    }
+    
+    // Remove from ADL queue if present
+    if (posData.inADLQueue) {
+        adlEngine.removeFromADLQueue(pos.marketId, positionId, pos.side);
+        posData.inADLQueue = false;
+        emit ADLQueueStatusChanged(positionId, false, 0);
+    }
+    
+    // Remove from user and market position lists
+    _removeUserPosition(trader, positionId);
+    _removeMarketPosition(pos.marketId, positionId);
+    
+    // Emit closure event (non-liquidation)
+    emit PositionClosed(positionId, trader, closePrice, realizedPnL, false);
+    
+    // Delete position storage (gas refund)
+    delete positions[positionId];
+    
+    // Update trader portfolio
+    _updatePortfolio(trader);
+}
+
+/**
+ * @notice Remove position from market's position list
+ * @dev Maintains accurate market position tracking for cleanup
+ */
+function _removeMarketPosition(bytes32 marketId, bytes32 positionId) internal {
+    bytes32[] storage marketList = marketPositions[marketId];
+    for (uint256 i = 0; i < marketList.length; i++) {
+        if (marketList[i] == positionId) {
+            marketList[i] = marketList[marketList.length - 1];
+            marketList.pop();
+            break;
+        }
+    }
+}
+
+function _validateIncreaseInputs(uint256 additionalSize, uint256 additionalCollateral) internal pure {
+    if (additionalSize == 0) revert PositionManager__InvalidSize();
+    if (additionalCollateral == 0) revert PositionManager__InsufficientCollateral();
+}
+
+function _validatePositionForIncrease(bytes32 positionId, CommonStructs.Position storage position) internal view {
+    if (positionId != position.positionId) revert PositionManager__InvalidPosition();
+    if (position.positionId == bytes32(0)) revert PositionManager__InvalidPosition();
+    if (position.trader == address(0)) revert PositionManager__InvalidTrader();
+}
+
+function _validateDecreaseInputs(uint256 reduceSize, uint256 withdrawCollateral) internal pure {
+    if (reduceSize == 0 && withdrawCollateral == 0) revert PositionManager__InvalidReduction();
+}
+
+function _validatePositionForDecrease(bytes32 positionId, CommonStructs.Position storage position, uint256 reduceSize) 
+    internal view 
+{
+    if (positionId == bytes32(0)) revert PositionManager__InvalidPosition();
+    if (positionId != position.positionId) revert PositionManager__InvalidPosition();
+    if (position.positionId == bytes32(0)) revert PositionManager__InvalidPosition();
+    if (position.trader == address(0)) revert PositionManager__InvalidTrader();
+    if (reduceSize > position.size) revert PositionManager__ReductionExceedsPosition(reduceSize, position.size);
+}
+
+function _processPositionIncrease(
+    bytes32 positionId,
+    PositionData storage positionData,
+    CommonStructs.Position storage position,
+    uint256 additionalSize,
+    uint256 additionalCollateral,
+    uint256 currentPrice 
+) internal {
+    // uint256 currentPrice = _getCurrentPrice(position.marketId);
+    uint256 additionalNotional = (additionalSize * currentPrice) / 1e18;
+    
+    _checkIncreaseLimits(position.trader, position.marketId, additionalNotional);
+   
+    
+    uint256 netAdditionalCollateral = _handleIncreaseCollateralAndFees(
+        position.trader,
+        position.marketId,
+        additionalCollateral,
+        additionalNotional
+    );
+    
+    _updatePositionAfterIncrease(
+        positionId,
+        positionData, 
+        position, 
+        additionalSize, 
+        netAdditionalCollateral, 
+        additionalNotional, 
+        currentPrice
+        );
+
+     _updatePositionState(
+        positionId, 
+        currentPrice
+     );
+
+    _updateExternalSystemsAfterIncrease(
+        positionId, 
+        position, 
+        additionalSize, 
+        additionalNotional
+    );
+
+    emit PositionIncreased(positionId, position.trader, additionalSize, additionalCollateral, position.entryPrice, position.leverage, block.timestamp);
+}
+
+function _checkIncreaseLimits(address trader, bytes32 marketId, uint256 additionalNotional) internal view {
+    if (address(volumeTracker) == address(0)) return;
+    _checkVolumeBasedLimits(trader, marketId, additionalNotional);
+    _checkMarketSpecificLimits(trader, marketId, additionalNotional);
+}
+
+function _handleIncreaseCollateralAndFees(
+    address trader,
+    bytes32 marketId,
+    uint256 additionalCollateral,
+    // uint256 grossAdditionalNotional,
+    uint256 additionalNotional
+) internal returns (uint256 netAdditionalCollateral) {
+    address quoteAsset = marketRegistry.getQuoteAsset(marketId);
+    uint256 increaseFee = feeCalculator.calculateTradingFeeTaker(
+        quoteAsset,
+        trader,
+        additionalNotional
+    );
+
+    if (increaseFee > additionalCollateral) revert PositionManager__InsufficientCollateralForFee();
+
+    netAdditionalCollateral = additionalCollateral - increaseFee;
+
+    //     if (fee > grossAdditionalCollateral) {
+    //     revert PositionManager__InsufficientCollateralForFee();
+    // }
+    
+    // IERC20 collateralToken = IERC20(quoteAsset);
+    // uint256 allowance = collateralToken.allowance(trader, address(this));
+    // if (allowance < additionalCollateral) {
+    //     revert PositionManager__InsufficientAllowance();
+    // }
+    //    SafeTransfer.safeTransferFrom(
+    //     collateralToken, 
+    //     msg.sender, 
+    //     address(this), 
+    //     additionalCollateral
+    // );
+    
+    emit FeeCollected(trader, increaseFee, "position_increase");
+    return netAdditionalCollateral;
+}
+
+function _updatePositionAfterIncrease(
+    bytes32 positionId,
+    PositionData storage positionData,
+    CommonStructs.Position storage position,
+    uint256 additionalSize,
+    uint256 netAdditionalCollateral,
+    uint256 additionalNotional,
+    uint256 currentPrice
+) internal {
+    // Calculate new weighted average entry price
+    if (currentPrice == 0) {
+        currentPrice = _getCurrentPrice(position.marketId);
     }
 
-    /**
-     * @notice Get all position IDs for a trader
-     * @param trader Address of the trader
-     * @return Array of position IDs owned by the trader
-     */
-    function getUserPositions(address trader) external view returns (bytes32[] memory) {
-        return userPositions[trader];
+    if (position.positionId != positionId) {
+        revert PositionManager__InvalidPosition();
+    }
+    uint256 oldNotional = (position.size * position.entryPrice) / 1e18;
+    uint256 newTotalSize = position.size + additionalSize;
+    uint256 newEntryPrice = ((oldNotional + additionalNotional) * 1e18) / newTotalSize;
+    
+    // Update position storage
+    position.size = newTotalSize;
+    position.entryPrice = newEntryPrice;
+    position.collateral += netAdditionalCollateral;
+    
+    // Recalculate leverage
+    uint256 newNotional = (newTotalSize * newEntryPrice) / 1e18;
+    position.leverage = uint16((newNotional * 100) / position.collateral);
+    
+    // Update liquidation price
+    position.liquidationPrice = _calculateLiquidationPrice(
+        position.marketId,
+        position.side,
+        newEntryPrice,
+        position.collateral,
+        newTotalSize
+    );
+    
+    // Update timestamp when state changes
+    positionData.lastUpdateTime = block.timestamp;
+    
+    // Update market open interest
+    openInterest[position.marketId][position.side] += additionalSize;
+}
+
+function _updateExternalSystemsAfterIncrease(
+    bytes32 positionId,
+    CommonStructs.Position storage position,
+    uint256 additionalSize,
+    uint256 additionalNotional
+) internal {
+
+    if (additionalSize == 0) revert PositionManager__InvalidSize();
+
+    // Record trade volume
+    if (address(volumeTracker) != address(0)) {
+        volumeTracker.recordTrade(position.trader, position.marketId, additionalNotional);
+    }
+    
+    // Update incentive rewards
+    if (address(incentiveManager) != address(0)) {
+        incentiveManager.recordTrade(position.trader, additionalNotional);
+    }
+    
+    // Update ADL engine
+    PositionData storage positionData = positions[positionId];
+    // Update timestamp when state changes
+    positionData.lastUpdateTime = block.timestamp;
+
+    adlEngine.updateADLQueue(
+        position.marketId,
+        positionId,
+        position.trader,
+        position.side,
+        position.unrealizedPnL,
+        position.leverage
+    );
+    
+    // Update portfolio
+    _updatePortfolio(position.trader);
+}
+
+function _processPositionDecrease(
+    bytes32 positionId,
+    PositionData storage positionData,
+    CommonStructs.Position storage position,
+    uint256 reduceSize,
+    uint256 withdrawCollateral
+) internal {
+    uint256 currentPrice = _getCurrentPrice(
+        position.marketId
+        );
+
+    _updatePositionState(
+        positionId, 
+        currentPrice
+        );
+    
+    int256 realizedPnL = 0;
+    if (reduceSize > 0) {
+    // Calculate realized PnL from size reduction
+        realizedPnL = _handleSizeReduction(
+            positionId, 
+            positionData, 
+            position, 
+            reduceSize, 
+            currentPrice
+            );
+        if (position.size == 0) {
+            _closePositionCompletely(
+                positionId, 
+                position.trader, 
+                realizedPnL
+                );
+            return;
+        }
+    }
+    
+    if (withdrawCollateral > 0) {
+        _handleCollateralWithdrawal(
+            positionId, 
+            position, 
+            withdrawCollateral
+            );
+    }
+    
+      //  Update position state
+    _updatePositionAfterDecrease(
+        positionId,
+        positionData, 
+        position, 
+        reduceSize, 
+        realizedPnL
+        );
+    
+    emit PositionDecreased(positionId, position.trader, reduceSize, withdrawCollateral, realizedPnL, block.timestamp);
+    if (realizedPnL != 0) emit PnLRealized(positionId, position.trader, realizedPnL, block.timestamp);
+}
+function _getCurrentPrice(bytes32 marketId) internal pure returns (uint256) {
+    return _getMockPrice(marketId);
+}
+
+function _getMockPrice(bytes32 marketId) internal pure returns (uint256) {
+    // TODO: Replace with actual oracle implementation
+    // This is a temporary mock for development
+    
+
+    if (marketId == ETH_USD) return 3000 * 1e18;
+    if (marketId == BTC_USD) return 60000 * 1e18;
+    return 100 * 1e18;
+}
+
+function _handleSizeReduction(
+    bytes32 positionId,
+    PositionData storage positionData,
+    CommonStructs.Position storage position,
+    uint256 reduceSize,
+    uint256 currentPrice
+) internal returns (int256 realizedPnL) {
+    require(reduceSize <= position.size, "INVALID_REDUCTION");
+    if (positionId != position.positionId) {
+        revert PositionManager__InvalidPosition();
     }
 
-    /**
-     * @notice Get portfolio summary for a trader
-     * @param trader Address of the trader
-     * @return Portfolio structure with aggregated position data
-     */
-    function getPortfolio(address trader) external view returns (CommonStructs.Portfolio memory) {
-        return portfolios[trader];
+    uint256 reductionRatio = (reduceSize * 1e18) / position.size;
+    
+    realizedPnL = (position.unrealizedPnL * int256(reductionRatio)) / 1e18;
+    uint256 reducedNotional = (reduceSize * currentPrice) / 1e18;
+    
+    if (address(volumeTracker) != address(0)) {
+        volumeTracker.recordTrade(position.trader, position.marketId, reducedNotional);
     }
 
-    /**
-     * @notice Get open interest for a market and side
-     * @param marketId Market identifier
-     * @param side Position side (LONG/SHORT)
-     * @return Total open interest in base asset units
-     */
-    function getOpenInterest(bytes32 marketId, CommonStructs.Side side) external view returns (uint256) {
-        return openInterest[marketId][side];
+    // Update timestamp when state changes
+    positionData.lastUpdateTime = block.timestamp;
+    
+    position.size -= reduceSize;
+    openInterest[position.marketId][position.side] -= reduceSize;
+    position.unrealizedPnL -= realizedPnL;
+    
+    return realizedPnL;
+}
+
+
+function _handleCollateralWithdrawal(
+    bytes32 positionId,
+    CommonStructs.Position storage position,
+    uint256 withdrawCollateral
+) internal {
+    if (withdrawCollateral > position.collateral) revert PositionManager__InsufficientCollateral();
+    
+    uint256 newCollateral = position.collateral - withdrawCollateral;
+    uint256 notional = (position.size * position.entryPrice) / 1e18;
+    MarketRiskConfig memory config = marketRiskConfigs[position.marketId];
+    uint256 requiredIM = (notional * config.initialMarginBps) / 10000;
+    
+    if (newCollateral < requiredIM) revert PositionManager__InsufficientMarginAfterWithdrawal();
+    
+    position.collateral = newCollateral;
+    address collateralToken = marketRegistry.getQuoteAsset(position.marketId);
+    SafeTransfer.safeTransfer(IERC20(collateralToken), msg.sender, withdrawCollateral);
+
+    emit CollateralWithdrawn(positionId, position.trader, withdrawCollateral, position.collateral,
+    block.timestamp);
+}
+
+function _updatePositionAfterDecrease(
+    bytes32 positionId,
+    PositionData storage positionData,
+    CommonStructs.Position storage position,
+    uint256 reduceSize,
+    int256 realizedPnL
+) internal {
+
+      _applyRealizedPnLToCollateral(position, realizedPnL);
+
+       totalRealizedPnL[position.trader] += realizedPnL;
+
+//     if (realizedPnL > 0 ){
+//    position.collateral += uint256(realizedPnL);
+//     } else if (realizedPnL < 0) {
+//         // Loss subtracts from collateral
+//         uint256 loss = uint256(-realizedPnL);
+//         if (loss > position.collateral) {
+//             revert PositionManager__InsufficientCollateral();
+//         }
+//    }
+//         position.collateral -= loss;
+
+  
+
+
+    if (reduceSize > 0) {
+        uint256 notional = (position.size * position.entryPrice) / 1e18;
+        position.leverage = uint16((notional * 100) / position.collateral);
     }
 
-    function getMarketPositions(bytes32 marketId) external view returns (bytes32[] memory) {
-        return marketPositions[marketId];
+     uint256 newNotional = (position.size * position.entryPrice) / 1e18;
+    position.leverage = uint16((newNotional * 100) / position.collateral);
+    
+    position.liquidationPrice = _calculateLiquidationPrice(
+        position.marketId,
+        position.side,
+        position.entryPrice,
+        position.collateral,
+        position.size
+    );
+
+    positionData.lastUpdateTime = block.timestamp;
+    
+    adlEngine.updateADLQueue(
+        position.marketId,
+        positionId,
+        position.trader,
+        position.side,
+        position.unrealizedPnL,
+        position.leverage
+    );
+    
+    _updatePortfolio(position.trader);
+}
+
+function _applyRealizedPnLToCollateral(
+    CommonStructs.Position storage position, 
+    int256 realizedPnL
+) internal {
+    if (realizedPnL > 0) {
+        // Profit: add to collateral
+        position.collateral += uint256(realizedPnL);
+    } else if (realizedPnL < 0) {
+        // Loss: subtract from collateral
+        uint256 loss = uint256(-realizedPnL);
+        require(loss <= position.collateral, "Insufficient collateral for loss");
+        position.collateral -= loss;
     }
+    // if realizedPnL == 0,  simply do nothing, No profit/loss realized → collateral stays same
+}
+
+// ============================================================================
+// LIMIT CHECK FUNCTIONS
+// ============================================================================
+
+function _checkMarketSpecificLimits(address trader, bytes32 marketId, uint256 notional) internal view {
+    if (address(volumeTracker) == address(0)) return;
+    
+    uint256 totalVolume30d = volumeTracker.get30DayVolume(trader);
+    IVolumeTracker.MarketVolume memory marketVol = volumeTracker.getMarketVolume(trader, marketId);
+    uint256 marketVolume30d = marketVol.volume30d;
+    
+    // Prevent > 50% concentration in one market
+    if (totalVolume30d > 0) {
+        uint256 concentrationBps = (marketVolume30d * 10000) / totalVolume30d;
+        if (concentrationBps > 5000) revert PositionManager__MarketConcentrationExceeded(marketId, concentrationBps, 5000);
+    }
+    
+    // New position can't exceed 20% of existing market volume
+    uint256 maxNewPosition = (marketVolume30d * 20) / 100;
+    if (notional > maxNewPosition) revert PositionManager__MarketPositionExceedsHistory(notional, maxNewPosition);
+}
+
+function _checkVolumeBasedLimits(address trader, bytes32 marketId, uint256 notional) internal view {
+    if (address(volumeTracker) == address(0)) return;
+    
+    uint256 volume30d = volumeTracker.get30DayVolume(trader);
+    uint256 lifetimeVolume = volumeTracker.getLifetimeVolume(trader);
+
+    // using marketId to get market-specific volume
+    uint256 marketVolume30d = volumeTracker.getMarketVolume(trader, marketId).volume30d;
+
+    
+    // Single position cannot exceed 10% of 30-day volume
+    uint256 maxSinglePosition = (volume30d * 10) / 100;
+    if (notional > maxSinglePosition) revert PositionManager__PositionExceedsVolumeLimit(notional, maxSinglePosition);
+    
+    // Stricter limits for new traders
+    if (lifetimeVolume < 10_000e18) {
+        uint256 newTraderLimit = 1_000e18;
+        if (notional > newTraderLimit) revert PositionManager__NewTraderLimitExceeded(notional, newTraderLimit);
+    }
+
+       // Over-Engineering add market-specific limit
+    uint256 maxMarketPosition = (marketVolume30d * 20) / 100;
+    if (notional > maxMarketPosition) {
+    }
+}
+
+// ============================================================================
+// POSITION STATE MANAGEMENT
+// ============================================================================
+
+function _updatePositionState(bytes32 positionId, uint256 currentPrice) internal {
+    PositionData storage posData = positions[positionId];
+    if (posData.position.openedAt == 0) return;
+
+    CommonStructs.Position storage pos = posData.position;
+    int256 unrealizedPnL = _calculateUnrealizedPnL(pos, currentPrice);
+    pos.unrealizedPnL = unrealizedPnL;
+
+    // Update liquidation status
+    bool shouldBeLiquidatable = (pos.side == CommonStructs.Side.LONG && currentPrice <= pos.liquidationPrice)
+        || (pos.side == CommonStructs.Side.SHORT && currentPrice >= pos.liquidationPrice);
+    posData.isLiquidatable = shouldBeLiquidatable;
+    posData.lastUpdateTime = block.timestamp;
+
+    // ADL Queue Logic
+    if (unrealizedPnL > 0) {
+        // int256 pnlUint = unrealizedPnL;
+        uint256 adlScore =
+            (uint256(unrealizedPnL) * uint256(pos.leverage)) / 100;
+
+        
+        adlEngine.updateADLQueue(
+            pos.marketId, 
+            positionId, 
+            pos.trader, 
+            pos.side, 
+            unrealizedPnL, 
+            pos.leverage
+            );
+        
+        if (!posData.inADLQueue) {
+            posData.inADLQueue = true;
+            emit ADLQueueStatusChanged(positionId, true, adlScore);
+        }
+    } else if (posData.inADLQueue) {
+        adlEngine.removeFromADLQueue(
+            pos.marketId, 
+            positionId, 
+            pos.side
+            );
+        posData.inADLQueue = false;
+        emit ADLQueueStatusChanged(positionId, false, 0);
+    }
+}
+
+function _calculateLiquidationPrice(
+    bytes32 marketId,
+    CommonStructs.Side side,
+    uint256 entryPrice,
+    uint256 collateral,
+    uint256 size
+) internal view returns (uint256 liquidPrice) {
+    if (size == 0) return side == CommonStructs.Side.LONG ? 0 : type(uint256).max;
+
+    MarketRiskConfig memory config = marketRiskConfigs[marketId];
+    uint16 mmrBps = config.maintenanceMarginBps > 0 ? config.maintenanceMarginBps : 50; // default 0.5%
+
+    uint256 notional = (size * entryPrice) / 1e18;
+    uint256 mmr = (notional * mmrBps) / 10000;
+
+    if (collateral <= mmr) {
+        return side == CommonStructs.Side.LONG ? 0 : type(uint256).max;
+    }
+
+    uint256 buffer = collateral - mmr;
+    uint256 priceMove = (buffer * 1e18) / size;
+
+    if (side == CommonStructs.Side.LONG) {
+        liquidPrice = priceMove >= entryPrice ? 1 : entryPrice - priceMove;
+    } else {
+        liquidPrice = priceMove > type(uint256).max - entryPrice ? type(uint256).max : entryPrice + priceMove;
+    }
+}
+
+function _calculateUnrealizedPnL(CommonStructs.Position storage pos, uint256 currentPrice) internal view returns (int256) {
+    int256 diff = pos.side == CommonStructs.Side.LONG
+        ? int256(currentPrice) - int256(pos.entryPrice)
+        : int256(pos.entryPrice) - int256(currentPrice);
+    return (diff * int256(pos.size)) / 1e18;
+}
+
+function _updatePortfolio(address trader) internal {
+    // Get all position IDs belonging to this trader
+    bytes32[] memory ids = userPositions[trader];
+
+    // Initialize counters
+    uint256 totalCol = 0;  // Get all position IDs belonging to this trader
+    int256 totalPnL = 0;   // Total paper profit/loss
+    uint256 count = 0;    // Number of open positions
+
+    // Loop through each position ID
+    for (uint256 i = 0; i < ids.length; i++) {
+          // Get the position data using the ID
+        PositionData storage pd = positions[ids[i]];
+        // Skip deleted/closed positions (openedAt == 0 means empty slot)
+        if (pd.position.openedAt == 0) continue;
+        // Add this position's values to totals
+        totalCol += pd.position.collateral; // Add collateral
+        totalPnL += pd.position.unrealizedPnL; // Add paper PnL
+        count++;   // Count position
+    }
+
+    uint256 marginRatio = totalCol > 0 
+    
+        ? ((totalCol + uint256(totalPnL > 0 ? totalPnL : int256(0))) * 10000) / totalCol 
+        : 0;
+
+    portfolios[trader] = CommonStructs.Portfolio({
+        trader: trader,
+        totalCollateral: totalCol,
+        totalRealizedPnL: totalRealizedPnL[trader],
+        totalUnrealizedPnL: totalPnL,
+        marginRatio: marginRatio,
+        positionCount: count,
+        lastUpdateTime: block.timestamp
+    });
+}
+
+function _removeUserPosition(address trader, bytes32 positionId) internal {
+    bytes32[] storage list = userPositions[trader];
+    for (uint256 i = 0; i < list.length; i++) {
+        if (list[i] == positionId) {
+            list[i] = list[list.length - 1];
+            list.pop();
+            break;
+        }
+    }
+}
+
+function _setDefaultRiskConfigs() internal {
+    // Defaults - can be extended with specific market configurations
+}
+
+// ============================================================================
+// VIEW FUNCTIONS
+// ============================================================================
+
+function getPositionNetValue(bytes32 positionId, uint256 currentPrice) external view returns (int256) {
+    PositionData storage posData = positions[positionId];
+    // Current unrealized PnL
+    int256 unrealizedPnL = _calculateUnrealizedPnL(posData.position, currentPrice);
+    
+    // Pending funding (negative if owed, positive if receiving)
+    int256 pendingFunding = _calculateFundingOwed(positionId);
+    
+    // Net value = collateral + unrealizedPnL - pendingFunding
+    return int256(posData.position.collateral) + unrealizedPnL - pendingFunding;
+}
+
+function getMarketRiskConfig(bytes32 marketId) 
+    external 
+    view 
+    returns (MarketRiskConfig memory) 
+{
+    return marketRiskConfigs[marketId];
+}
+
+function getPendingFunding(bytes32 positionId) external view returns (int256) {
+    return _calculateFundingOwed(positionId);
+}
+
+function getFundingOwed(bytes32 positionId) external view returns (int256) {
+    return _calculateFundingOwed(positionId);
+}
+
+function getPosition(bytes32 positionId) external view returns (PositionData memory) {
+    return positions[positionId];
+}
+
+function getPositionOwner(bytes32 positionId) external view returns (address) {
+    return positionOwner[positionId];
+}
+
+function getPositionSize(bytes32 positionId) external view returns (uint256) {
+    return positions[positionId].position.size;
+}
+
+function getUserPositions(address trader) external view returns (bytes32[] memory) {
+    return userPositions[trader];
+}
+
+function getPortfolio(address trader) external view returns (CommonStructs.Portfolio memory) {
+    return portfolios[trader];
+}
+
+function getOpenInterest(bytes32 marketId, CommonStructs.Side side) external view returns (uint256) {
+    return openInterest[marketId][side];
+}
+
+function getMarketPositions(bytes32 marketId) external view returns (bytes32[] memory) {
+    return marketPositions[marketId];
+}
+
+function getMarketPositionsBatch(bytes32 marketId) external view returns (bytes32[] memory) {
+    return marketPositions[marketId];
+}
+
 }

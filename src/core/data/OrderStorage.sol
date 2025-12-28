@@ -4,10 +4,11 @@ pragma solidity ^0.8.24;
 import {CommonStructs} from "../../libraries/structs/CommonStructs.sol";
 import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
 
+
 /**
  * @title OrderStorage
  * @notice Stores and manages all limit/stop orders for BAOBAB
- * @dev Direct integration with PositionManager. No DataStore. Gas-optimized.
+ * @dev dev Execution ledger. Written exclusively by PerpEngine. Reads are public.
  *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
  *                                      ORDER STORAGE ENGINE
@@ -121,6 +122,9 @@ contract OrderStorage {
     /// @notice PositionManager reference - immutable for security
     address public immutable positionManager;
 
+    /// @notice PerpEngine reference - immutable for future use
+    address public immutable perpEngine;
+
     // Order book structures (future enhancement)
     mapping(bytes32 => mapping(uint256 => CommonStructs.PriceLevel)) public bidLevels; // Bids sorted descending
     mapping(bytes32 => mapping(uint256 => CommonStructs.PriceLevel)) public askLevels; // Asks sorted ascending
@@ -134,11 +138,15 @@ contract OrderStorage {
     /**
      * @notice Initialize OrderStorage with PositionManager dependency
      * @param _positionManager Address of PositionManager contract
+     * @param _perpEngine Address of PerpEngine contract
      */
-    constructor(address _positionManager) {
+    constructor(address _positionManager, address _perpEngine) {
         _positionManager.validateNotZero();
         if (_positionManager == address(0)) revert OrderStorage__Unauthorized();
         positionManager = _positionManager;
+        _perpEngine.validateNotZero();
+        if (_perpEngine == address(0)) revert OrderStorage__Unauthorized();
+        perpEngine = _perpEngine;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -153,13 +161,18 @@ contract OrderStorage {
         _;
     }
 
+    modifier onlyPerpEngine() {
+        if (msg.sender != perpEngine) revert OrderStorage__Unauthorized();
+        _;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                    ORDER LIFECYCLE - EXTERNAL
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /**
      * @notice Place a new order
-     * @dev Only callable by PositionManager after validation
+     * @dev Only callable by PerpEngine after validation
      * @param trader Address of the order placer
      * @param marketId Market identifier
      * @param side LONG or SHORT position direction
@@ -185,7 +198,7 @@ contract OrderStorage {
         uint16 leverage,
         uint256 expiry,
         bool reduceOnly
-    ) external onlyPositionManager returns (bytes32 orderId) {
+    ) external onlyPerpEngine returns (bytes32 orderId) {
         // Validate input parameters
         if (size == 0) revert OrderStorage__InvalidSize();
         trader.validateNotZero();
@@ -233,12 +246,12 @@ contract OrderStorage {
 
     /**
      * @notice Fill an order (partial or full)
-     * @dev Only PositionManager can fill orders after execution
+     * @dev Only PerpEngine can fill orders after execution
      * @param orderId Order identifier to fill
      * @param fillSize Amount to fill (must be <= remaining size)
      * @param fillPrice Actual execution price
      */
-    function fillOrder(bytes32 orderId, uint256 fillSize, uint256 fillPrice) external onlyPositionManager {
+    function fillOrder(bytes32 orderId, uint256 fillSize, uint256 fillPrice) external onlyPerpEngine {
         CommonStructs.OrderStorageOrder storage order = orders[orderId];
 
         // Validate order state
@@ -267,7 +280,7 @@ contract OrderStorage {
      * @param orderId Order identifier to cancel
      * @param reason Reason for cancellation
      */
-    function cancelOrder(bytes32 orderId, string calldata reason) external onlyPositionManager {
+    function cancelOrder(bytes32 orderId, string calldata reason) external onlyPerpEngine {
         _cancelOrder(orderId, reason);
     }
 
@@ -276,7 +289,7 @@ contract OrderStorage {
      * @param orderIds Array of order identifiers to cancel
      * @param reason Reason for cancellation
      */
-    function cancelOrderBatch(bytes32[] calldata orderIds, string calldata reason) external onlyPositionManager {
+    function cancelOrderBatch(bytes32[] calldata orderIds, string calldata reason) external onlyPerpEngine {
         for (uint256 i = 0; i < orderIds.length; i++) {
             _cancelOrder(orderIds[i], reason);
         }
@@ -291,7 +304,7 @@ contract OrderStorage {
      */
     function cancelAllUserOrdersInMarket(address trader, bytes32 marketId, string calldata reason)
         external
-        onlyPositionManager
+        onlyPerpEngine
         returns (uint256 cancelledCount)
     {
         bytes32[] memory userOrderIds = userOrders[trader];
@@ -321,7 +334,7 @@ contract OrderStorage {
      */
     function cancelAllUserOrders(address trader, string calldata reason)
         external
-        onlyPositionManager
+        onlyPerpEngine
         returns (uint256 cancelledCount)
     {
         bytes32[] memory userOrderIds = userOrders[trader];
@@ -344,7 +357,7 @@ contract OrderStorage {
      * @notice Expire a single order
      * @param orderId Order identifier to expire
      */
-    function expireOrder(bytes32 orderId) external onlyPositionManager {
+    function expireOrder(bytes32 orderId) external onlyPerpEngine {
         _expireOrder(orderId);
     }
 
@@ -352,7 +365,7 @@ contract OrderStorage {
      * @notice Expire multiple orders in batch
      * @param orderIds Array of order identifiers to expire
      */
-    function expireOrderBatch(bytes32[] calldata orderIds) external onlyPositionManager {
+    function expireOrderBatch(bytes32[] calldata orderIds) external onlyPerpEngine {
         for (uint256 i = 0; i < orderIds.length; i++) {
             _expireOrder(orderIds[i]);
         }
@@ -363,7 +376,7 @@ contract OrderStorage {
      * @param marketId Market identifier to clean up
      * @return expiredCount Number of orders expired
      */
-    function cleanupExpiredOrders(bytes32 marketId) external onlyPositionManager returns (uint256 expiredCount) {
+    function cleanupExpiredOrders(bytes32 marketId) external onlyPerpEngine returns (uint256 expiredCount) {
         bytes32[] memory marketOrderIds = marketOrders[marketId];
 
         for (uint256 i = 0; i < marketOrderIds.length; i++) {

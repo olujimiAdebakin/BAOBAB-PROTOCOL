@@ -6,6 +6,8 @@ import {SafeTransfer} from "../libraries/utils/SafeTransfer.sol";
 import {SecurityBase} from "../security/SecurityBase.sol";
 import {AddressUtils} from "../libraries/utils/AddressUtils.sol";
 import {PositionManager} from "../core/trading/PositionManager.sol";
+import {VolumeTracker} from "../fees/VolumeTracker.sol";
+
 /**
  * @title IncentiveManager
  * @author BAOBAB Protocol
