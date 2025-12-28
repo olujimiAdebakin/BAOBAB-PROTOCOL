@@ -119,6 +119,7 @@ contract FeeDistributor is EmergencyPauser{
     event EmergencyFundSweep(address indexed emergencyTreasury,uint256 balance);
     event KeeperBotUpdated(address indexed oldKeeper, address indexed newKeeper);
     event KeeperDistributionTriggered(address indexed keeper, uint256 amount, uint256 timestamp);
+    event FeesCollected(address indexed sender, uint256 amount);
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                           ERRORS                                               */
@@ -134,6 +135,8 @@ contract FeeDistributor is EmergencyPauser{
     error DistributionFailedError(address recipient, uint256 amount);
     error FeeDistributor__CircuitActive();
     error FeeDistributor_ENGINE__Paused();
+    error FeeCollector_NotAuthorized();
+    error InsufficientBalance();
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                         MODIFIERS                                              */
@@ -249,8 +252,8 @@ contract FeeDistributor is EmergencyPauser{
         // Set default fee distribution (optimized for protocol sustainability)
         feeSplit = CommonStructs.FeeDistribution({
             treasuryBps: 3200,   // 32% - Protocol development & operations
-            lpBps: 4000,         // 40% - Liquidity provider incentives
-            insuranceBps: 1500,  // 15% - Risk coverage & insurance
+            lpBps: 3000,         // 30% - Liquidity provider incentives
+            insuranceBps: 2500,  // 25% - Risk coverage & insurance
             stakersBps: 1000,    // 10% - BAOBAB staking rewards
             burnBps: 300         // 3%  - Deflationary tokenomics
         });
@@ -259,6 +262,24 @@ contract FeeDistributor is EmergencyPauser{
             revert InvalidFeeDistribution();
         }
     }
+
+    function collectFees(uint256 amount) external {
+    // Only allow calls from trusted PositionManager contracts or roles
+    if (!authorizedDistributors[msg.sender]) {
+        revert FeeCollector_NotAuthorized();
+    }
+
+    // Tokens should already be transferred to this contract before calling
+    if (!(settlementToken.balanceOf(address(this)) >= amount)) {
+        revert InsufficientBalance();
+    }
+
+    totalFeesCollected += amount;
+
+    // Optionally, update internal tracking or emit event
+    emit FeesCollected(msg.sender, amount);
+}
+
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                    CORE DISTRIBUTION LOGIC                                     */

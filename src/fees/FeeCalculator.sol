@@ -7,18 +7,22 @@ import {CommonStructs} from "../libraries/structs/CommonStructs.sol";
 import {BaobabMath} from "../libraries/utils/BaobabMath.sol";
 import {SafeTransfer} from "../libraries/utils/SafeTransfer.sol";
 import {RoleRegistry} from "../access/RoleRegistry.sol";
+import {IVolumeTracker} from "../interfaces/IVolumeTracker.sol";
+import {AccessManager} from "../access/AccessManager.sol";
+import {SecurityBase} from "../security/SecurityBase.sol";
 
 /**
  * @title FeeCalculator – BAOBAB Protocol Revenue Engine
  * @notice Centralized fee calculation engine with tier-based discounts and dynamic pricing
  * @dev Uses BaobabMath for safe arithmetic operations and standardized calculations
  */
-contract FeeCalculator is AccessControl {
+contract FeeCalculator is AccessManager {
     using BaobabMath for uint256;
     using BaobabMath for int256;
     using CommonStructs for *;
     using SafeTransfer for IERC20;
 
+    IVolumeTracker public volumeTracker;
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                       ROLES & CONSTANTS                                        */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
@@ -26,6 +30,7 @@ contract FeeCalculator is AccessControl {
     // Role constants imported from RoleRegistry
     bytes32 public constant FEE_MANAGER_ROLE = RoleRegistry.FEE_MANAGER_ROLE;
     bytes32 public constant EMERGENCY_ADMIN = RoleRegistry.EMERGENCY_ADMIN;
+    bytes32 public constant ADMIN_ROLE = RoleRegistry.ADMIN_ROLE;
 
     uint256 public constant KEEPER_FEE_USD = 2.5e6; // $2.50
 
@@ -55,7 +60,7 @@ contract FeeCalculator is AccessControl {
 
     // External contract dependencies
     IERC20 public immutable baobabToken;
-    address public volumeTracker;
+    // address public volumeTracker;
     address public circuitBreaker;
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
@@ -78,6 +83,7 @@ contract FeeCalculator is AccessControl {
     error InvalidFeeConfiguration();
     error InvalidAssetClass();
     error VolatilityMultiplierOutOfRange();
+    error VolumeTrackerNotSet();
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                         MODIFIERS                                              */
@@ -98,6 +104,8 @@ contract FeeCalculator is AccessControl {
         _;
     }
 
+
+
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                        CONSTRUCTOR                                             */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
@@ -106,16 +114,19 @@ contract FeeCalculator is AccessControl {
      * @notice Initialize FeeCalculator with protocol dependencies and default configurations
      * @param _baobabToken Address of BAOBAB token for staking-based tier calculations
      * @param admin Administrator address with default role privileges
+     * @param _owner Owner address for AccessManager
+     * @param _volumeTracker Address of VolumeTracker contract for user volume data
      */
-    constructor(address _baobabToken, address admin) {
+    constructor(address _baobabToken, address _volumeTracker, address admin, address _owner)  AccessManager(_owner) {
         if (_baobabToken == address(0) || admin == address(0)) {
             revert InvalidFeeConfiguration();
         }
 
         baobabToken = IERC20(_baobabToken);
+        volumeTracker = IVolumeTracker(_volumeTracker);
         
         // Setup role hierarchy
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(ADMIN_ROLE, admin);
         _grantRole(FEE_MANAGER_ROLE, admin);
         _grantRole(EMERGENCY_ADMIN, admin);
 
@@ -206,6 +217,8 @@ contract FeeCalculator is AccessControl {
         address user,
         uint256 notionalUsd
     ) external view returns (uint256 feeBps) {
+        if (address(volumeTracker) == address(0)) revert VolumeTrackerNotSet();
+
         CommonStructs.FeeConfig memory config = _getFeeConfig(asset);
         
         // Apply volatility multiplier to base fee
@@ -239,6 +252,8 @@ contract FeeCalculator is AccessControl {
         address user,
         uint256 notionalUsd
     ) external view returns (int256 feeBps) {
+        if (address(volumeTracker) == address(0)) revert VolumeTrackerNotSet();
+
         CommonStructs.UserTier memory userTier = _getUserTierStruct(user, notionalUsd);
         // Will have Negative values indicate rebates
         return userTier.makerRebateBps; 
@@ -256,6 +271,8 @@ contract FeeCalculator is AccessControl {
         uint256 notionalUsd,
         bool isOpening
     ) external view returns (uint256 feeBps) {
+        if (address(volumeTracker) == address(0)) revert VolumeTrackerNotSet();
+
         // Position fees are typically lower than trading fees
         uint256 baseFee = isOpening ? 5 : 3; // 0.05% open, 0.03% close
         
@@ -366,6 +383,15 @@ contract FeeCalculator is AccessControl {
         emit VolatilityMultiplierUpdated(multiplierBps);
     }
 
+        /**
+     * @notice Set volume tracker contract address
+     * @param tracker Volume tracker contract address
+     */
+    function setVolumeTracker(address tracker) external onlyRole(ADMIN_ROLE) {
+        volumeTracker = IVolumeTracker(tracker);
+        emit VolumeTrackerUpdated(tracker);
+    }
+
     /**
      * @notice Toggle emergency mode with optional fee cap
      * @param capBps Global emergency fee cap in basis points
@@ -378,20 +404,20 @@ contract FeeCalculator is AccessControl {
         emit EmergencyModeToggled(emergencyMode, capBps);
     }
 
-    /**
-     * @notice Set volume tracker contract address
-     * @param tracker Volume tracker contract address
-     */
-    function setVolumeTracker(address tracker) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        volumeTracker = tracker;
-        emit VolumeTrackerUpdated(tracker);
-    }
+    // /**
+    //  * @notice Set volume tracker contract address
+    //  * @param tracker Volume tracker contract address
+    //  */
+    // function setVolumeTracker(address tracker) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    //     volumeTracker = tracker;
+    //     emit VolumeTrackerUpdated(tracker);
+    // }
 
     /**
      * @notice Set circuit breaker contract address
      * @param breaker Circuit breaker contract address
      */
-    function setCircuitBreaker(address breaker) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setCircuitBreaker(address breaker) external onlyRole(ADMIN_ROLE) {
         circuitBreaker = breaker;
         emit CircuitBreakerUpdated(breaker);
     }
@@ -449,9 +475,15 @@ contract FeeCalculator is AccessControl {
 
 function _getUserTierStruct(address user, uint256 volume30d) 
     internal view returns (CommonStructs.UserTier memory) 
+    
 {
+
+        //  Get ACTUAL 30-day volume from VolumeTracker
+        volume30d = volumeTracker.get30DayVolume(user);
+        // 2. Get BAOBAB stake balance
     uint256 staked = baobabToken.balanceOf(user);
     
+    // 3. Check from highest tier to lowest
     for (uint256 i = tiers.length - 1; i >= 1; i--) {
         if (volume30d >= tiers[i].minVolume30d && staked >= tiers[i].minStake) {
             return tiers[i];

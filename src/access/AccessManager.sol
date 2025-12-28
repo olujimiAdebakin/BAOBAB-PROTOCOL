@@ -161,6 +161,7 @@ contract AccessManager is SecurityBase {
         _internalSetRoleAdmin(RoleRegistry.TRADING_OPERATOR_ROLE, RoleRegistry.ADMIN_ROLE);
         _internalSetRoleAdmin(RoleRegistry.VAULT_OPERATOR_ROLE, RoleRegistry.ADMIN_ROLE);
         _internalSetRoleAdmin(RoleRegistry.RISK_MANAGER_ROLE, RoleRegistry.ADMIN_ROLE);
+        // _internalSetRoleAdmin(RoleRegistry.DEFAULT_ADMIN_ROLE, RoleRegistry.ADMIN_ROLE);
 
         // Security roles with specialized admin chains
         _internalSetRoleAdmin(RoleRegistry.PAUSER_ROLE, RoleRegistry.GUARDIAN_ROLE); // Guardians control pausing

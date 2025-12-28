@@ -179,6 +179,7 @@ library CommonStructs {
      * @param entryPrice Average entry price for position (18 decimals)
      * @param leverage Position leverage (1-100x)
      * @param lastFundingIndex Last funding rate index applied
+     * @param lastCumulativeFunding Last cumulative funding paid/received
      * @param unrealizedPnL Current profit/loss (updated periodically)
      * @param liquidationPrice Price at which position gets liquidated (18 decimals)
      * @param openedAt Timestamp when position was opened
@@ -193,6 +194,7 @@ library CommonStructs {
         uint256 entryPrice;
         uint16 leverage;
         int256 lastFundingIndex;
+        int256 lastCumulativeFunding;
         int256 unrealizedPnL;
         uint256 liquidationPrice;
         uint256 openedAt;
@@ -226,6 +228,7 @@ library CommonStructs {
     struct Portfolio {
         address trader;
         uint256 totalCollateral;
+        int256 totalRealizedPnL;
         int256 totalUnrealizedPnL;
         uint256 marginRatio;
         uint256 positionCount;
@@ -435,7 +438,7 @@ library CommonStructs {
         bytes32 positionId;
         address trader;
         CommonStructs.Side side;
-        uint256 unrealizedPnL;
+        int256 unrealizedPnL;
         uint16 leverage;
         uint256 adlScore;
         uint256 lastUpdateTime;

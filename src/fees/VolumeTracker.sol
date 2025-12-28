@@ -3,6 +3,8 @@ pragma solidity ^0.8.24;
 
 import {CommonStructs} from "../libraries/structs/CommonStructs.sol";
 import {VolumeStructs} from "../libraries/structs/VolumeStructs.sol";
+import {RoleRegistry} from "../access/RoleRegistry.sol";
+import {SecurityBase} from "../security/SecurityBase.sol";
 
 /**
  * @title VolumeTracker
@@ -21,11 +23,11 @@ import {VolumeStructs} from "../libraries/structs/VolumeStructs.sol";
  * - Gas-optimized batch queries
  * - Role-based access control
  */
-contract VolumeTracker {
+contract VolumeTracker is SecurityBase {
 
      using CommonStructs for  *;
      using VolumeStructs for *;
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════════════════════
     //                                          STRUCTURES
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -84,8 +86,8 @@ contract VolumeTracker {
     /// @notice Total protocol volume (lifetime)
     uint256 public protocolLifetimeVolume;
 
-    /// @notice Emergency pause flag
-    bool public paused;
+    // /// @notice Emergency pause flag
+    // bool public paused;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                          EVENTS
@@ -105,7 +107,7 @@ contract VolumeTracker {
     error Unauthorized();
     error ZeroAddress();
     error ZeroAmount();
-    error Paused();
+    // error Paused();
     error InvalidMarketId();
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -122,10 +124,10 @@ contract VolumeTracker {
         _;
     }
 
-    modifier whenNotPaused() {
-        if (paused) revert Paused();
-        _;
-    }
+    // modifier whenNotPaused() {
+    //     if (paused) revert Paused();
+    //     _;
+    // }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                          CONSTRUCTOR
@@ -317,14 +319,14 @@ contract VolumeTracker {
         emit AdminTransferred(oldAdmin, newAdmin);
     }
 
-    /**
-     * @notice Emergency pause (stops all recording)
-     * @param _paused Pause state
-     */
-    function setPaused(bool _paused) external onlyAdmin {
-        paused = _paused;
-        emit EmergencyPause(_paused);
-    }
+    // /**
+    //  * @notice Emergency pause (stops all recording)
+    //  * @param _paused Pause state
+    //  */
+    // function setPaused(bool _paused) external onlyAdmin {
+    //     paused = _paused;
+    //     emit EmergencyPause(_paused);
+    // }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                      INTERNAL HELPERS

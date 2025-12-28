@@ -1,0 +1,10 @@
+# Language overrides
+*.sol linguist-language=Solidity
+*.js linguist-language=JavaScript
+*.ts linguist-language=TypeScript
+*.md linguist-language=Markdown
+
+# Ignore vendor/third-party code from detection
+vendor/** linguist-vendored
+node_modules/** linguist-vendored
+test/** linguist-documentation

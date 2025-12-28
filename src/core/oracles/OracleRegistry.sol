@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
-import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
+import {IPriceFeed} from "../../interfaces/IPriceFeed.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
@@ -24,7 +24,7 @@ contract OracleRegistry is AccessControl {
     /// @notice Supported assets list
     address[] public supportedAssets;
 
-    event OracleSet(address indexed asset, address primary, address fallback);
+    event OracleSet(address indexed asset, address primary, address fallbackOracle);
     event AssetSupportToggled(address indexed asset, bool supported);
 
     constructor(address admin) {
@@ -35,10 +35,10 @@ contract OracleRegistry is AccessControl {
     function setOracle(
         address asset,
         IPriceFeed primary,
-        IPriceFeed fallback
+        IPriceFeed secondaryOracle
     ) external onlyRole(ORACLE_MANAGER) {
         primaryOracle[asset] = primary;
-        fallbackOracle[asset] = fallback;
+        fallbackOracle[asset] = secondaryOracle;
 
         if (!isSupportedAsset[asset]) {
             isSupportedAsset[asset] = true;
@@ -46,7 +46,7 @@ contract OracleRegistry is AccessControl {
             emit AssetSupportToggled(asset, true);
         }
 
-        emit OracleSet(asset, address(primary), address(fallback));
+        emit OracleSet(asset, address(primary), address(secondaryOracle));
     }
 
     function toggleAssetSupport(address asset, bool supported) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -64,9 +64,9 @@ contract OracleRegistry is AccessControl {
             } catch {}
         }
 
-        IPriceFeed fallback = fallbackOracle[asset];
-        if (address(fallback) != address(0)) {
-            try fallback.latestAnswer() returns (int256 p) {
+        IPriceFeed secondaryOracle = fallbackOracle[asset];
+        if (address(secondaryOracle) != address(0)) {
+            try secondaryOracle.latestAnswer() returns (int256 p) {
                 if (p > 0) return (p, true);
             } catch {}
         }
