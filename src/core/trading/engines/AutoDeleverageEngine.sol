@@ -178,7 +178,7 @@ contract AutoDeleverageEngine is SecurityBase {
      * @param timestamp Block timestamp when deleveraging occurred
      */
     event PositionDeleveraged(
-        bytes32 indexed positionId, address indexed trader, uint256 realizedPnL, uint256 timestamp
+        bytes32 indexed positionId, address indexed trader, int256 realizedPnL, uint256 timestamp
     );
 
     struct ForceCloseParams {
@@ -290,7 +290,6 @@ contract AutoDeleverageEngine is SecurityBase {
         address _insuranceVault,
         address _positionManager,
         address _ratelimter
-        // address _liquidationEngine
     ) {
         // Zero-address guard — prevents deployment with invalid core contracts
         if (
@@ -548,7 +547,7 @@ contract AutoDeleverageEngine is SecurityBase {
         bytes32 positionId,
         address trader,
         CommonStructs.Side side,
-        uint256 unrealizedPnL,
+        int256 unrealizedPnL,
         uint16 leverage
     ) external onlyPositionManager  whenNotEmergencyPaused whenCircuitNotActive(marketId){
 
@@ -558,13 +557,14 @@ contract AutoDeleverageEngine is SecurityBase {
 
         // rateLimiter.checkRateLimit(user, keccak256(abi.encodePacked("UPDATE_ADL_QUEUE")));
         // Only include profitable positions in ADL queue
+        require(unrealizedPnL > 0, "NEGATIVE_PNL");
         if (unrealizedPnL == 0) {
             _removePositionFromQueue(marketId, positionId, side);
             return;
         }
 
         // Calculate ADL score: higher PnL + higher leverage = higher score
-        uint256 adlScore = (unrealizedPnL * leverage) / 100;
+        uint256 adlScore = (uint256(unrealizedPnL) * uint256(leverage)) / 100;
 
         CommonStructs.ADLCandidate memory candidate = CommonStructs.ADLCandidate({
             positionId: positionId,

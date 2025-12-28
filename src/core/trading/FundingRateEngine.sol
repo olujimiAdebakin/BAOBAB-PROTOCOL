@@ -8,6 +8,7 @@ import {AccessManager} from "../../access/AccessManager.sol";
 import {RateLimiter} from "../../security/RateLimiter.sol";
 import {RateLimitBuckets} from "../../libraries/utils/RateLimitBuckets.sol";
 import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
+import {SecurityBase} from "../../security/SecurityBase.sol";
 
 /**
  * @title IAccessManager
@@ -17,6 +18,9 @@ interface IAccessManager {
     /// @notice Checks if the given account holds the specified role.
     function hasRole(bytes32 role, address account) external view returns (bool);
 }
+
+
+
 
 /**
  * @title FundingEngine
@@ -36,7 +40,7 @@ interface IAccessManager {
  * 8.  The position's `accumulatedFunding` (debt/credit) is updated in the `PositionManager`.
  * 9.  The `lastFundingTime` is updated to `block.timestamp`, and a `FundingApplied` event is emitted.
  */
-contract FundingEngine {
+contract FundingEngine is SecurityBase {
     /// @notice Address of the PositionManager contract, used to access market configuration and position data.
     PositionManager public immutable positionManager;
     /// @notice Address of the AccessManager contract, used to verify keeper permissions.
@@ -51,11 +55,14 @@ contract FundingEngine {
     /// @notice The absolute maximum funding rate allowed if not overridden by market config (0.3% per 8 hours).
     uint256 public constant MAX_FUNDING_RATE = 300;
     /// @notice The fixed duration for a funding calculation period (8 hours).
-    uint256 public constant FUNDING_PERIOD = 5 hours;
+    uint256 public constant FUNDING_PERIOD = 8 hours;
     /// @notice Constant for Basis Points (10,000) used for scaling percentages.
     uint256 public constant BASIS_POINTS = 10_000;
     /// @notice Constant for 1e18 precision, used in rate calculation for fixed-point math.
     uint256 public constant PRECISION = 1e18;
+
+    /// @notice Maps a market ID to its current funding state.
+    mapping(bytes32 => FundingState) public fundingState;
 
     /// @notice Maps a market ID to the timestamp when funding was last successfully applied.
     mapping(bytes32 => uint256) public lastFundingTime;
@@ -76,6 +83,15 @@ contract FundingEngine {
     error FundingTooSoon();
     /// @notice Thrown when a market ID is not recognized (currently stubbed).
     error MarketNotFound();
+
+    struct FundingState {
+    uint256 lastUpdateTime;
+    int256 fundingRateBps;
+    int256 cumulativeFunding;  // AFPU in basis points × time
+    uint256 totalLongOI;
+    uint256 totalShortOI;
+}
+
 
     /**
      * @notice Initializes the FundingEngine with addresses for PositionManager and AccessManager.
@@ -101,55 +117,94 @@ contract FundingEngine {
         _;
     }
 
-    /**
-     * @notice Applies funding fee to all positions in a market based on the calculated rate.
-     * @dev This function can only be called by a whitelisted Keeper.
-     * @param marketId The market ID.
-     * @return rateBps The calculated funding rate in basis points (BPS).
-     */
-    function applyFundingRate(bytes32 marketId) external onlyKeeper returns (int256 rateBps) {
-        rateLimiter.checkRateLimit(msg.sender, RateLimitBuckets.APPLY_FUNDING);
-        // Destructure only the required market config components
-        (
-            , // maxLev (unused)
-            , // mmr (unused)
-            uint16 maxFund,
-            bool fundEnabled,
-            uint256 interval // fundingInterval (unused)
-        ) = positionManager.marketConfig(marketId);
 
-        // Check if funding is disabled or interval is zero
-        if (!fundEnabled || interval == 0) {
-            lastFundingTime[marketId] = block.timestamp;
-            return 0;
-        }
+  /**
+ * @notice Updates the market's global funding index (AFPU) based on Open Interest (OI) skew.
+ *
+ * @dev This is the keeper-triggered function for the **Pull Model**. 
+ * 1. It calculates the instantaneous funding rate (\`rateBps\`).
+ * 2. It calculates the funding change (\`deltaFunding\`) over the elapsed time.
+ * 3. It performs a single, gas-efficient $O(1)$ write to update the \`cumulativeFunding\` index. 
+ * The unscalable, $O(N)$ loop over positions is eliminated.
+ * 4. Funding is settled lazily (pulled) by users on position interaction via the PositionManager.
+ *
+ * @param marketId The market ID.
+ * @return rateBps The calculated funding rate in basis points (BPS) for the period.
+ */
+function applyFundingRate(bytes32 marketId) 
+    external 
+    nonReentrant 
+    onlyKeeper 
+    returns (int256 rateBps) 
+{
+    rateLimiter.checkRateLimit(msg.sender, RateLimitBuckets.APPLY_FUNDING);
+    
+    //  Fetch Config & State
+    (
+        , , // maxLev, mmr (not needed)
+        uint16 maxFund,
+        bool fundEnabled,
+        uint256 fundingInterval // Market-specific funding period
+    ) = positionManager.marketConfig(marketId);
 
-        // Enforce the funding period time lock
-        if (block.timestamp < lastFundingTime[marketId] + FUNDING_PERIOD) {
-            revert FundingTooSoon();
-        }
+    // Get the storage pointer to the market's AFPU data structure.
+    FundingState storage fs = fundingState[marketId];
 
-        uint256 longOI = positionManager.openInterest(marketId, CommonStructs.Side.LONG);
-        uint256 shortOI = positionManager.openInterest(marketId, CommonStructs.Side.SHORT);
-        uint256 totalOI = longOI + shortOI;
-
-        // If no open interest, just update the last funding time and exit
-        if (totalOI == 0) {
-            lastFundingTime[marketId] = block.timestamp;
-            return 0;
-        }
-
-        // Calculate the rate and number of periods
-        rateBps = _calculateRate(longOI, shortOI, totalOI, maxFund);
-        uint256 periods = (block.timestamp - lastFundingTime[marketId]) / FUNDING_PERIOD;
-
-        // Apply funding to all positions
-        _applyToPositions(marketId, rateBps, periods);
-
-        // Update time and emit event
-        lastFundingTime[marketId] = block.timestamp;
-        emit FundingApplied(marketId, rateBps, longOI, shortOI);
+    // Initial Safety Checks
+    if (!fundEnabled || fundingInterval == 0) {
+        // If funding is disabled, update the time anchor and exit.
+        fs.lastUpdateTime = block.timestamp;
+        return 0;
     }
+    
+    //  Time Lock Enforcement
+    uint256 elapsed = block.timestamp - fs.lastUpdateTime;
+    
+    // Use the market's configured interval to check if enough time has passed.
+    if (elapsed < fundingInterval) {
+        revert FundingTooSoon();
+    }
+
+    //  Check Open Interest (OI)
+    uint256 longOI = positionManager.openInterest(marketId, CommonStructs.Side.LONG);
+    uint256 shortOI = positionManager.openInterest(marketId, CommonStructs.Side.SHORT);
+    uint256 totalOI = longOI + shortOI;
+
+    if (totalOI == 0) {
+        // No open interest means no rate, but consume the time period.
+        fs.lastUpdateTime = block.timestamp;
+        return 0;
+    }
+
+    // Calculate Rate and AFPU Update
+    
+    // Calculate the periodic rate based on current OI skew and the market's max cap.
+    rateBps = _calculateRate(longOI, shortOI, totalOI, maxFund);
+
+    // Calculate the change in the AFPU index based on the rate and elapsed time.
+    // Delta = (rateBps * elapsed * PRECISION) / (fundingInterval * BASIS_POINTS)
+    int256 deltaFunding = (
+        int256(rateBps)
+        * int256(elapsed) 
+        * int256(PRECISION)
+    ) / int256(fundingInterval * BASIS_POINTS);
+    
+    // Update the core AFPU index (O(1) storage write). 
+    fs.cumulativeFunding += deltaFunding;
+    
+    // Store latest metrics in the struct (for off-chain readers/monitoring)
+    fs.fundingRateBps = rateBps;
+    fs.totalLongOI = longOI;
+    fs.totalShortOI = shortOI;
+    
+    //  Finalize Cycle
+    // Update the time anchor to block.timestamp for the next cycle's clock.
+    fs.lastUpdateTime = block.timestamp; 
+
+    emit FundingApplied(marketId, rateBps, longOI, shortOI);
+
+    return rateBps;
+}
 
     /**
      * @notice Calculates the periodic funding rate based on open interest imbalance, capped by maxRateBps.
@@ -177,55 +232,55 @@ contract FundingEngine {
         return rate;
     }
 
-    /**
-     * @notice Iterates over all open positions in a market and updates their accumulated funding.
-     * @param marketId The market ID.
-     * @param rateBps The calculated funding rate in BPS.
-     * @param periods The number of full funding intervals that have elapsed since the last funding.
-     */
-    function _applyToPositions(bytes32 marketId, int256 rateBps, uint256 periods) internal {
-        // Fetch all position IDs for the given market
-        bytes32[] memory posIds = positionManager.getMarketPositions(marketId);
+    // /**
+    //  * @notice Iterates over all open positions in a market and updates their accumulated funding.
+    //  * @param marketId The market ID.
+    //  * @param rateBps The calculated funding rate in BPS.
+    //  * @param periods The number of full funding intervals that have elapsed since the last funding.
+    //  */
+    // function _applyToPositions(bytes32 marketId, int256 rateBps, uint256 periods) internal {
+    //     // Fetch all position IDs for the given market
+    //     bytes32[] memory posIds = positionManager.getMarketPositions(marketId);
 
-        // Loop through each position ID
-        for (uint256 i = 0; i < posIds.length; i++) {
-            bytes32 posId = posIds[i];
+    //     // Loop through each position ID
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         bytes32 posId = posIds[i];
 
-            // Destructure the tuple returned from the public PositionManager.positions mapping accessor
-            (
-                CommonStructs.Position memory position,
-                uint256 lastUpdateTime,
-                int256 accumulatedFunding,
-                bool isLiquidatable,
-                bool inADLQueue
-            ) = positionManager.positions(posId);
+    //         // Destructure the tuple returned from the public PositionManager.positions mapping accessor
+    //         (
+    //             CommonStructs.Position memory position,
+    //             uint256 lastUpdateTime,
+    //             int256 accumulatedFunding,
+    //             bool isLiquidatable,
+    //             bool inADLQueue
+    //         ) = positionManager.positions(posId);
 
-            // Rebuild the PositionData struct in memory (required for the subsequent logic if structs are used)
-            PositionManager.PositionData memory data = PositionManager.PositionData({
-                position: position,
-                lastUpdateTime: lastUpdateTime,
-                accumulatedFunding: accumulatedFunding,
-                isLiquidatable: isLiquidatable,
-                inADLQueue: inADLQueue
-            });
+    //         // Rebuild the PositionData struct in memory (required for the subsequent logic if structs are used)
+    //         PositionManager.PositionData memory data = PositionManager.PositionData({
+    //             position: position,
+    //             lastUpdateTime: lastUpdateTime,
+    //             accumulatedFunding: accumulatedFunding,
+    //             isLiquidatable: isLiquidatable,
+    //             inADLQueue: inADLQueue
+    //         });
 
-            // Skip positions that are not opened (openedAt == 0 is an empty slot check)
-            if (data.position.openedAt == 0) continue;
+    //         // Skip positions that are not opened (openedAt == 0 is an empty slot check)
+    //         if (data.position.openedAt == 0) continue;
 
-            // Calculate the funding payment
-            int256 payment =
-                _calcPayment(data.position.size, rateBps, periods, data.position.side == CommonStructs.Side.LONG);
+    //         // Calculate the funding payment
+    //         int256 payment =
+    //             _calcPayment(data.position.size, rateBps, periods, data.position.side == CommonStructs.Side.LONG);
 
-            // Accumulate the funding payment
-            data.accumulatedFunding += payment;
+    //         // Accumulate the funding payment
+    //         data.accumulatedFunding += payment;
 
-            // Update the accumulated funding in PositionManager
-            positionManager.updateAccumulatedFunding(posId, data.accumulatedFunding);
+    //         // Update the accumulated funding in PositionManager
+    //         positionManager.updateAccumulatedFunding(posId, data.accumulatedFunding);
 
-            // Emit an event
-            emit FundingPaid(posId, payment, data.position.side == CommonStructs.Side.LONG);
-        }
-    }
+    //         // Emit an event
+    //         emit FundingPaid(posId, payment, data.position.side == CommonStructs.Side.LONG);
+    //     }
+    // }
 
     /**
      * @notice Calculates the total funding payment for a single position.
@@ -244,6 +299,17 @@ contract FundingEngine {
     }
 
     // === VIEW ===
+
+    /// @notice Reads the funding state for a given market
+    /// @param marketId The market identifier
+    /// @return lastUpdateTime The last time funding was updated
+    /// @return fundingRateBps The current funding rate in basis points
+    /// @return cumulativeFunding The cumulative funding value
+    function readFundingState(bytes32 marketId) external view returns (uint256, int256, int256) {
+    FundingState storage fs = fundingState[marketId];
+    return (fs.lastUpdateTime, fs.fundingRateBps, fs.cumulativeFunding);
+}
+
     /**
      * @notice Calculates the current funding rate for a given market based on open interest skew.
      * @dev This is the same rate calculation used internally by `applyFunding` but does not apply the funding.
@@ -270,5 +336,19 @@ contract FundingEngine {
     function timeUntilNext(bytes32 marketId) external view returns (uint256) {
         uint256 next = lastFundingTime[marketId] + FUNDING_PERIOD;
         return block.timestamp >= next ? 0 : next - block.timestamp;
+    }
+
+    /// @notice Gets the cumulative funding for a market
+    /// @param marketId The market identifier
+    /// @return The cumulative funding value
+        function getCumulativeFunding(bytes32 marketId) external view returns (int256) {
+        return fundingState[marketId].cumulativeFunding;
+    }
+    
+    /// @notice Gets the entire funding state for a market
+    /// @param marketId The market identifier
+    /// @return The complete FundingState struct
+    function getFundingState(bytes32 marketId) external view returns (FundingState memory) {
+        return fundingState[marketId];
     }
 }

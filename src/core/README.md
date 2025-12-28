@@ -1,157 +1,304 @@
-# BAOBAB Protocol Perpetual DEX Core Contracts 🔗
+# Baobab Protocol 🌴
 
 ## Overview
-This repository hosts the foundational Solidity smart contracts for the BAOBAB Protocol, a decentralized perpetual exchange (DEX). It provides robust on-chain infrastructure for managing perpetual futures positions, dynamic funding rates, a sophisticated auto-deleverage (ADL) mechanism, and a flexible oracle integration layer to ensure secure and efficient decentralized trading.
+Baobab Protocol is a modular decentralized perpetual exchange (DEX) engine written in Solidity. It utilizes a high-performance position management system, automated deleveraging (ADL) mechanisms, and multi-source oracle integration to provide institutional-grade trading infrastructure on-chain.
 
 ## Features
-*   **Position Management**: Handles the full lifecycle of perpetual futures positions, including opening, modifying, and closing, with real-time collateral, PnL, and liquidation price tracking.
-*   **Dynamic Funding Rates**: Implements a `FundingRateEngine` to calculate and apply periodic funding rates based on open interest (OI) skew, maintaining market balance and peg.
-*   **Auto-Deleverage (ADL)**: Features a robust `AutoDeleverageEngine` designed to protect the insurance fund by automatically deleveraging the most profitable opposing positions in extreme market conditions, inspired by leading CEX risk models.
-*   **Decentralized Oracles**: Integrates an `OracleRegistry` supporting multiple price feeds (e.g., Chainlink, Pyth) and custom adapters to ensure reliable and secure price data for all markets.
-*   **Market Configuration**: Allows for granular configuration of market-specific risk parameters, including maintenance margins, initial margins, and maximum leverage, categorized by liquidity tiers.
-*   **Event & Market Factories**: Provides factory contracts for creating and managing derivative events and perpetual markets, ensuring a modular and scalable architecture.
+*   **Order Management**: Stores and manages all limit/stop orders for the protocol, with direct integration with `PositionManager`, ensuring gas-optimized order handling.
+*   **Position Management**: Core contract for managing perpetual positions, including real-time PnL calculation, margin requirements, and liquidation mechanics. It features dynamic risk parameters based on liquidity tiers.
+*   **Auto-Deleverage (ADL) Engine**: An advanced risk socialization mechanism that automatically closes profitable opposing positions when liquidations cannot be fully covered, protecting the protocol's insurance fund during extreme market volatility.
+*   **Dynamic Funding Rate Engine**: Calculates and applies periodic funding rates to open positions based on Open Interest (OI) imbalance, promoting price stability and convergence with spot markets.
+*   **Market Registry**: A central registry for all trading markets within the protocol, handling market metadata (base/quote assets, asset class), risk parameters (leverage, margin requirements, fees), and operational status.
+*   **Oracle Integration**: Centralized registry for mapping assets to primary and fallback price feeds, supporting various adapters such as Pyth, Chainlink, and TWAP for robust and secure price discovery.
+*   **Robust Error Handling & Security**: Implements custom error types for clear feedback and includes comprehensive security features through `onlyAdmin`, `onlyKeeper`, `whenNotEmergencyPaused`, and `whenCircuitActivated` modifiers to control access and prevent unauthorized operations or trades during critical events.
 
 ## Getting Started
 ### Installation
-To set up the project locally, follow these steps:
-
 1.  **Clone the Repository**:
     ```bash
     git clone https://github.com/olujimiAdebakin/BAOBAB-PROTOCOL.git
-    cd BAOBAB-PROTOCOL
     ```
-
-2.  **Install Dependencies**:
-    This project uses Solidity, typically managed with a development environment like Hardhat or Foundry. Assuming `npm` or `forge` is installed:
+2.  **Install Dependencies**: (Requires [Foundry](https://book.getfoundry.sh/) to be installed)
     ```bash
-    # For npm/Hardhat (if package.json exists)
-    npm install
-
-    # For Foundry (if foundry.toml exists)
     forge install
     ```
-    If neither `package.json` nor `foundry.toml` are present, you might need to initialize a Hardhat/Foundry project and add the contracts.
-
-3.  **Compile Smart Contracts**:
-    Compile the Solidity contracts to generate their ABIs and bytecode.
+3.  **Build the Project**:
     ```bash
-    # Using Hardhat
-    npx hardhat compile
-
-    # Using Foundry
     forge build
+    ```
+4.  **Run Tests (Optional)**:
+    ```bash
+    forge test
     ```
 
 ### Environment Variables
-This project requires certain environment variables, especially for deployment and interaction with blockchain networks. Please configure them in a `.env` file in the project root.
-
-*   `ADMIN_ADDRESS`: The address designated as the protocol administrator. Example: `0xAdminAddressHere`
-*   `ORACLE_REGISTRY_ADDRESS`: Address of the deployed Oracle Registry contract. Example: `0xOracleRegistryContractAddress`
-*   `ADL_ENGINE_ADDRESS`: Address of the deployed AutoDeleverageEngine contract. Example: `0xADLEngineContractAddress`
-*   `FUNDING_ENGINE_ADDRESS`: Address of the deployed FundingEngine contract. Example: `0xFundingEngineContractAddress`
-*   `CIRCUIT_BREAKER_ADDRESS`: Address of the deployed CircuitBreaker contract. Example: `0xCircuitBreakerContractAddress`
-*   `EMERGENCY_PAUSER_ADDRESS`: Address of the deployed EmergencyPauser contract. Example: `0xEmergencyPauserContractAddress`
-*   `LIQUIDATION_ENGINE_ADDRESS`: Address of the deployed LiquidationEngine contract. Example: `0xLiquidationEngineContractAddress`
-*   `INSURANCE_VAULT_ADDRESS`: Address of the protocol's insurance fund vault. Example: `0xInsuranceVaultContractAddress`
-*   `RPC_URL_<NETWORK_NAME>`: RPC endpoint for a specific blockchain network (e.g., `RPC_URL_SEPOLIA`). Example: `https://sepolia.infura.io/v3/YOUR_API_KEY`
-*   `PRIVATE_KEY`: Private key of the deployer/admin account. **Handle with extreme care, especially in production environments.** Example: `0x...your_private_key...`
-
-## Usage
-Interacting with the BAOBAB Protocol's smart contracts typically involves deployment to an EVM-compatible blockchain and then sending transactions to call their public functions.
-
-### Deployment
-To deploy the contracts to a local development network or a testnet:
-
-1.  **Ensure Environment Variables are Set**: Refer to the "Environment Variables" section above.
-2.  **Run Deployment Scripts**:
-    ```bash
-    # Example for Hardhat (assuming a deploy script is in 'scripts/')
-    npx hardhat run scripts/deploy.js --network sepolia
-
-    # Example for Foundry
-    forge script script/DeployContracts.s.sol --rpc-url $RPC_URL_SEPOLIA --private-key $PRIVATE_KEY --broadcast --verify
-    ```
-    *Note: Replace `sepolia` with your target network and ensure your `hardhat.config.js` or `foundry.toml` is configured for it.*
-
-### Interacting with Contracts
-Once deployed, you can interact with the contracts using tools like Hardhat's console, Foundry's `cast` or `forge script`, or directly through web3 libraries in your dApp.
-
-#### Example: Setting Market Risk Configuration
-As an administrator, you might set up a new market's risk parameters:
-
-```solidity
-// Example pseudo-code for calling setMarketRiskConfig
-// In a Hardhat test or script:
-const positionManager = await ethers.getContractAt("PositionManager", "0xPositionManagerAddress");
-
-const marketId = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("BTC-USD-PERP"));
-const liquidityTier = 0; // Assuming HIGH = 0
-const maintenanceMarginBps = 50; // 0.5%
-const initialMarginBps = 100; // 1%
-const maxLeverage = 100; // 100x
-
-await positionManager.setMarketRiskConfig(
-    marketId,
-    liquidityTier,
-    maintenanceMarginBps,
-    initialMarginBps,
-    maxLeverage
-);
-
-console.log(`Market ${marketId} configured.`);
+Create a `.env` file in the root directory and include the following variables:
+```bash
+RPC_URL=https://eth-mainnet.g.alchemy.com/v2/your-api-key
+PRIVATE_KEY=0xabc123...your_private_key
+ETHERSCAN_API_KEY=your_etherscan_key
+BAOBAB_ADMIN_ADDRESS=0x...admin_address
+KEEPER_ADDRESS=0x... (Authorized funding keeper address)
 ```
 
-#### Example: Opening a Position
-A trading engine would call `openPosition` on the `PositionManager`:
+## API Documentation
+### Base URL
+`blockchain://protocol-core/v1` (replace `blockchain://protocol-core/v1` with the deployed contract addresses on your target network)
 
-```solidity
-// Example pseudo-code for calling openPosition
-// In a Hardhat test or script:
-const positionManager = await ethers.getContractAt("PositionManager", "0xPositionManagerAddress");
-const traderAddress = "0xTraderWalletAddress";
-const marketId = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("ETH-USD-PERP"));
-const side = 0; // CommonStructs.Side.LONG
-const size = ethers.utils.parseUnits("1", 18); // 1 ETH equivalent
-const collateral = ethers.utils.parseUnits("1000", 18); // $1000 collateral
-const entryPrice = ethers.utils.parseUnits("3000", 18); // $3000
-const leverage = 10; // 10x leverage
+### Endpoints
 
-await positionManager.connect(tradingEngineSigner).openPosition(
-    traderAddress,
-    marketId,
-    side,
-    size,
-    collateral,
-    entryPrice,
-    leverage
-);
+#### POST /MarketRegistry/registerMarket
+Register a new market in the protocol with specified metadata and risk parameters.
 
-console.log(`Position opened for ${traderAddress} on market ${marketId}.`);
+**Request**:
+```json
+{
+  "baseAsset": "string",
+  "quoteAsset": "string",
+  "assetClass": "uint8 (0: CRYPTO, 1: STOCK, 2: FOREX, 3: COMMODITY)",
+  "oracleAdapter": "address",
+  "maxLeverage": "uint16",
+  "maintenanceMarginBps": "uint16",
+  "liquidationFeeBps": "uint16",
+  "maxOpenInterest": "uint256",
+  "tradingFeeBps": "uint16"
+}
 ```
+
+**Response**:
+```json
+{
+  "marketId": "bytes32"
+}
+```
+
+**Errors**:
+-   `403`: `MarketRegistry__Unauthorized`
+-   `400`: `MarketRegistry__InvalidLeverage`
+-   `409`: `MarketRegistry__MarketAlreadyExists`
+
+#### POST /PositionManager/openPosition
+Open a new perpetual position for a trader in a specified market.
+
+**Request**:
+```json
+{
+  "trader": "address",
+  "marketId": "bytes32",
+  "side": "uint8 (0: LONG, 1: SHORT)",
+  "size": "uint256 (18 decimals)",
+  "collateral": "uint256 (18 decimals)",
+  "entryPrice": "uint256 (18 decimals)",
+  "leverage": "uint16"
+}
+```
+
+**Response**:
+```json
+{
+  "positionId": "bytes32"
+}
+```
+
+**Errors**:
+-   `403`: `PositionManager__OnlyTradingEngine`
+-   `400`: `PositionManager__LeverageExceedsMax`
+-   `402`: `PositionManager__InsufficientInitialMargin`
+
+#### POST /PositionManager/increasePosition
+Increase the size and/or collateral of an existing position.
+
+**Request**:
+```json
+{
+  "positionId": "bytes32",
+  "additionalSize": "uint256 (18 decimals)",
+  "additionalCollateral": "uint256 (18 decimals)"
+}
+```
+
+**Response**:
+(No explicit return value for this function, but emits `PositionIncreased` event)
+
+**Errors**:
+-   `400`: `PositionManager__InvalidSize`
+-   `402`: `PositionManager__InsufficientCollateral`
+-   `403`: `PositionManager__OnlyTradingEngine`
+-   `404`: `PositionManager__InvalidPosition`
+
+#### POST /PositionManager/decreasePosition
+Decrease the size and/or withdraw collateral from an existing position.
+
+**Request**:
+```json
+{
+  "positionId": "bytes32",
+  "reduceSize": "uint256 (18 decimals)",
+  "withdrawCollateral": "uint256 (18 decimals)"
+}
+```
+
+**Response**:
+(No explicit return value for this function, but emits `PositionDecreased` and `PnLRealized` events)
+
+**Errors**:
+-   `400`: `PositionManager__InvalidReduction`
+-   `402`: `PositionManager__InsufficientCollateral`
+-   `403`: `PositionManager__OnlyTradingEngine`
+-   `404`: `PositionManager__InvalidPosition`
+-   `406`: `PositionManager__ReductionExceedsPosition`
+
+#### POST /PositionManager/closePosition
+Close an existing position entirely.
+
+**Request**:
+```json
+{
+  "positionId": "bytes32",
+  "closePrice": "uint256 (18 decimals)"
+}
+```
+
+**Response**:
+```json
+{
+  "realizedPnL": "int256 (18 decimals)"
+}
+```
+
+**Errors**:
+-   `404`: `PositionManager__PositionNotFound`
+-   `500`: `PositionManager__CircuitBroken`
+
+#### POST /FundingEngine/applyFundingRate
+Calculates and applies the funding rate to all positions in a given market.
+
+**Request**:
+```json
+{
+  "marketId": "bytes32"
+}
+```
+
+**Response**:
+```json
+{
+  "rateBps": "int256 (basis points)",
+  "lastFundingTime": "uint256 (timestamp)"
+}
+```
+
+**Errors**:
+-   `403`: `Only keeper`
+-   `429`: `FundingTooSoon` (Interval not elapsed)
+
+#### POST /AutoDeleverageEngine/executeADL
+Executes the Auto-Deleveraging (ADL) process for a failed liquidation to cover shortfalls.
+
+**Request**:
+```json
+{
+  "marketId": "bytes32",
+  "liquidatedPosition": "bytes32",
+  "side": "uint8 (0: LONG, 1: SHORT)",
+  "sizeToClose": "uint256 (18 decimals)",
+  "executionPrice": "uint256 (18 decimals)"
+}
+```
+
+**Response**:
+```json
+{
+  "success": "bool"
+}
+```
+
+**Errors**:
+-   `403`: `ADL__OnlyLiquidationEngine`
+-   `400`: `ADL__InsufficientCandidates`
+
+#### POST /OracleRegistry/setOracle
+Sets the primary and fallback oracle for a given asset.
+
+**Request**:
+```json
+{
+  "asset": "address",
+  "primary": "address",
+  "fallback": "address"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "success"
+}
+```
+
+**Errors**:
+-   `403`: `AccessControl: account 0x... is missing role 0x...` (requires `ORACLE_MANAGER` role)
+
+#### GET /PositionManager/getPosition
+Retrieve full data for a specific position by its ID.
+
+**Request**:
+```json
+{
+  "positionId": "bytes32"
+}
+```
+
+**Response**:
+```json
+{
+  "position": {
+    "trader": "address",
+    "marketId": "bytes32",
+    "side": "uint8",
+    "size": "uint256",
+    "collateral": "uint256",
+    "entryPrice": "uint256",
+    "leverage": "uint16",
+    "lastFundingIndex": "int256",
+    "unrealizedPnL": "int256",
+    "liquidationPrice": "uint256",
+    "openedAt": "uint256"
+  },
+  "lastUpdateTime": "uint256",
+  "accumulatedFunding": "int256",
+  "isLiquidatable": "bool",
+  "inADLQueue": "bool"
+}
+```
+
+**Errors**:
+-   `404`: `PositionManager__PositionNotFound`
 
 ## Technologies Used
-| Technology         | Purpose                                     |
-| :----------------- | :------------------------------------------ |
-| **Solidity**       | Smart contract development language         |
-| **OpenZeppelin**   | Secure, community-vetted smart contract libraries |
-| **Hardhat / Foundry**| Development environments for compiling, testing, and deploying contracts |
+| Technology | Purpose | Link |
+| :--- | :--- | :--- |
+| [Solidity](https://soliditylang.org/) | Smart Contract Logic | [soliditylang.org](https://soliditylang.org/) |
+| [Foundry](https://book.getfoundry.sh/) | Development & Testing Framework | [book.getfoundry.sh](https://book.getfoundry.sh/) |
+| [OpenZeppelin Contracts](https://openzeppelin.com/contracts/) | Security Standard Implementations (e.g., AccessControl, IERC20) | [openzeppelin.com](https://openzeppelin.com/contracts/) |
+| [EVM](https://ethereum.org/) | Ethereum Virtual Machine Execution Environment | [ethereum.org](https://ethereum.org/) |
+| [Chainlink](https://chain.link/) | Decentralized Price Oracles | [chain.link](https://chain.link/) |
+| [Pyth Network](https://pyth.network/) | Low-latency Market Data | [pyth.network](https://pyth.network/) |
 
 ## Contributing
-We welcome contributions to the BAOBAB Protocol! To get started:
-
-1.  **Fork the repository** 🍴.
-2.  **Create a new branch** for your feature or bug fix: `git checkout -b feature/your-feature-name` or `bugfix/issue-description`.
-3.  **Make your changes** and write clear, concise commit messages.
-4.  **Write comprehensive tests** for your changes to ensure functionality and prevent regressions.
-5.  **Ensure all tests pass** locally.
-6.  **Submit a Pull Request** (PR) to the `main` branch. Provide a detailed description of your changes and why they are necessary.
-
-## License
-This project is primarily licensed under the **BUSL-1.1** and **MIT** licenses, as indicated by the `SPDX-License-Identifier` in the source code files.
+-   **Fork the Project**: Create your own feature branch from `main`.
+-   **Adhere to Style**: Follow the [Solidity Style Guide](https://docs.soliditylang.org/en/v0.8.24/style-guide.html).
+-   **Test Coverage**: Ensure all new logic has corresponding unit tests in the `test/` directory.
+-   **Submit PR**: Provide a clear description of changes and related issues for review.
 
 ## Author Info
-**Adebakin Olujimi**
-*   Twitter: [@olujimi_the_dev]
+Developed by the Baobab Protocol Engineering Team.
+-   **Github**: [olujimiAdebakin](https://github.com/olujimiAdebakin)
+-   **Twitter**: [@jimi_baobab](https://twitter.com/placeholder)
+-   **LinkedIn**: [Olujimi Adebakin](https://linkedin.com/in/placeholder)
 
----
-[![Readme was generated by Dokugen](https://img.shields.io/badge/Readme%20was%20generated%20by-Dokugen-brightgreen)](https://www.npmjs.com/package/dokugen)
+![Solidity](https://img.shields.io/badge/Solidity-%23363636.svg?style=for-the-badge&logo=solidity&logoColor=white)
+![Foundry](https://img.shields.io/badge/Foundry-%232D3748.svg?style=for-the-badge&logo=foundry&logoColor=white)
+![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen?style=for-the-badge)
+
+
