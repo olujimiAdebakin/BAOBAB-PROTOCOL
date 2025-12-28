@@ -727,6 +727,38 @@ function setIncentiveManager(address _incentiveManager) external onlyAdmin {
 }
 
 
+/**
+ * @notice Opens a new trading position with specified parameters
+ * @dev Creates a position struct, validates risk limits, deducts fees, and initializes funding tracking
+ * @param trader Address of the trader opening the position
+ * @param marketId Identifier of the market (e.g., "ETH-USD")
+ * @param side Position side (LONG or SHORT)
+ * @param position Position struct to be initialized
+ * @param size Position size in base asset units (e.g., 1.5 ETH)
+ * @param collateral Initial collateral deposited in quote asset units (e.g., 3000 USDC)
+ * @param entryPrice Execution price in quote asset units (e.g., 3000 × 10¹⁸ for $3000/ETH)
+ * @param leverage Leverage multiplier (e.g., 10 for 10×)
+ * @return positionId Unique identifier for the created position
+ *
+ * @dev Flow:
+ * 1. Validate inputs and market configuration
+ * 2. Check volume and concentration limits
+ * 3. Calculate and deduct trading fees
+ * 4. Verify margin requirements are met
+ * 5. Generate unique position ID
+ * 6. Calculate liquidation price
+ * 7. Create position with initialized AFPU snapshot
+ * 8. Store position data and update tracking mappings
+ * 9. Update portfolio and ADL systems
+ *
+ * @dev Reverts if:
+ * - Size or collateral is zero
+ * - Market is not configured or inactive
+ * - Leverage exceeds market maximum
+ * - Volume or concentration limits are exceeded
+ * - Insufficient collateral for fees or initial margin
+ */
+
 function openPosition(
     address trader,
     bytes32 marketId,
@@ -792,7 +824,7 @@ function openPosition(
     positionId = keccak256(abi.encodePacked(
         trader, 
         marketId, 
-        _positionIdCounter++, 
+        _positionIdCounter++, // Increment counter for uniqueness
         block.timestamp
         ));
 
@@ -801,6 +833,7 @@ function openPosition(
     // Calculate liquidation price
     // Determines the price at which the position would be liquidated based on maintenance margin.
     // Calculates where the position will be liquidated based on risk parameters.
+    // Calculate liquidation price based on maintenance margin (MMR)
     uint256 liquidPrice = _calculateLiquidationPrice(
         marketId, 
         side, 
@@ -809,7 +842,8 @@ function openPosition(
         size
         );
 
-    // Create position
+    
+    // Create Position struct with all required fields
     CommonStructs.Position memory pos = CommonStructs.Position({
         positionId: positionId,
         marketId: marketId,
@@ -826,7 +860,7 @@ function openPosition(
         openedAt: block.timestamp
     });
 
-    // Store position data
+   // Store complete position data
     positions[positionId] = PositionData({
         position: pos,
         lastUpdateTime: block.timestamp,
@@ -835,13 +869,18 @@ function openPosition(
         inADLQueue: false
     });
 
-    // Update mappings
-    userPositions[trader].push(positionId);
-    marketPositions[marketId].push(positionId);
-    openInterest[marketId][side] += size;
+      // Update tracking mappings
+    userPositions[trader].push(positionId);  // Add to trader's position list
+    marketPositions[marketId].push(positionId);  // Add to markets position list
+    openInterest[marketId][side] += size;   // Increase market open interest
 
-    // Update systems
-    _updatePortfolio(trader);
+    // Update external systems
+
+    // Recalculate trader's total portfolio
+     _updatePortfolio(trader); 
+
+    // Add to ADL queue if necessary
+    // Register with Auto-Deleverage Engine
     adlEngine.updateADLQueue(
         marketId, 
         positionId, 
@@ -862,6 +901,8 @@ function openPosition(
         );
 
     emit ADLQueueStatusChanged(positionId, false, 0);
+    // Return the newly created position identifier
+    return positionId;
 }
 
 function modifyPosition(

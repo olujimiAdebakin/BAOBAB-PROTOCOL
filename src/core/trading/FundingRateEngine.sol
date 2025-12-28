@@ -117,16 +117,17 @@ contract FundingEngine is SecurityBase {
         _;
     }
 
-    /**
-     * @notice Applies funding fee to all positions in a market based on the calculated rate.
-     * @dev This function can only be called by a whitelisted Keeper.
-     * @param marketId The market ID.
-     * @return rateBps The calculated funding rate in basis points (BPS).
-     */
-/**
- * @notice The core keeper function to update the market's Accumulated Funding Per Unit (AFPU) index.
- * @dev This is an O(1) gas cost function, replacing the unscalable position loop. 
- * Funding liability accrues here, but settlement is "pulled" by the user on interaction.
+
+  /**
+ * @notice Updates the market's global funding index (AFPU) based on Open Interest (OI) skew.
+ *
+ * @dev This is the keeper-triggered function for the **Pull Model**. 
+ * 1. It calculates the instantaneous funding rate (\`rateBps\`).
+ * 2. It calculates the funding change (\`deltaFunding\`) over the elapsed time.
+ * 3. It performs a single, gas-efficient $O(1)$ write to update the \`cumulativeFunding\` index. 
+ * The unscalable, $O(N)$ loop over positions is eliminated.
+ * 4. Funding is settled lazily (pulled) by users on position interaction via the PositionManager.
+ *
  * @param marketId The market ID.
  * @return rateBps The calculated funding rate in basis points (BPS) for the period.
  */
