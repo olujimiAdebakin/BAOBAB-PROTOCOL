@@ -10,17 +10,17 @@ import {AddressUtils} from "../libraries/utils/AddressUtils.sol";
  * @author BAOBAB Protocol
  * @notice Comprehensive circuit breaker system for trading protection and fee distribution safety
  * @dev Monitors market conditions (price, volume, liquidations) and fee distribution anomalies
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
  *                                  DUAL-LAYER CIRCUIT BREAKER SYSTEM
  * ═══════════════════════════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * TRADING PROTECTION:              FEE DISTRIBUTION PROTECTION:
  * • Price deviation monitoring     • Fee amount anomaly detection
- * • Volume spike detection         • Distribution failure tracking  
+ * • Volume spike detection         • Distribution failure tracking
  * • Liquidation cascade prevention • Recipient balance limits
  * • Market-specific circuits       • Global fee circuit breaker
- * 
+ *
  * @dev Features:
  * • Per-market trading circuit breakers
  * • Global fee distribution protection
@@ -102,8 +102,8 @@ contract CircuitBreaker is SecurityBase {
 
     /// @notice Emitted when circuit breaker configuration is updated
     event ConfigUpdated(
-        uint16 maxPriceDeviationBps, 
-        uint16 maxVolumeSpikeBps, 
+        uint16 maxPriceDeviationBps,
+        uint16 maxVolumeSpikeBps,
         uint16 maxLiquidationRateBps,
         uint256 maxFeeAmount,
         uint16 maxFeeSpikeBps
@@ -139,7 +139,7 @@ contract CircuitBreaker is SecurityBase {
      * @param _admin The address that will have admin privileges
      * @dev Sets up default thresholds for both trading and fee protection
      *     Grants guardian role to the admin initially
-     * 
+     *
      */
     constructor(address _admin) {
         _admin.validateNotZero();
@@ -148,22 +148,21 @@ contract CircuitBreaker is SecurityBase {
         guardians[_admin] = true;
 
         // Default configuration balancing safety and usability
-        
+
         config = CommonStructs.CircuitBreakerConfig({
             // TRADING PROTECTION CONFIGURATION
-            maxPriceDeviationBps: 1000,     // 10% price swing threshold
-            maxVolumeSpikeBps: 30000,       // 300% volume spike threshold  
-            maxLiquidationRateBps: 2000,    // 20% liquidation ratio threshold
-            cooldownPeriod: 15 minutes,     // Minimum time circuit must stay open after reset
-            observationWindow: 5 minutes,   // Time window for market condition monitoring
-            isEnabled: true,                // Global toggle for trading protection
-            
+            maxPriceDeviationBps: 1000, // 10% price swing threshold
+            maxVolumeSpikeBps: 30000, // 300% volume spike threshold
+            maxLiquidationRateBps: 2000, // 20% liquidation ratio threshold
+            cooldownPeriod: 15 minutes, // Minimum time circuit must stay open after reset
+            observationWindow: 5 minutes, // Time window for market condition monitoring
+            isEnabled: true, // Global toggle for trading protection
             // FEE DISTRIBUTION PROTECTION CONFIGURATION
-            maxFeeAmount: 1_000_000 * 1e6,  // $1M maximum single distribution
-            maxFeeSpikeBps: 1000,           // 10x spike from average (1000% = 10x)
-            maxConsecutiveFailures: 5,      // 5 consecutive failures trigger circuit
+            maxFeeAmount: 1_000_000 * 1e6, // $1M maximum single distribution
+            maxFeeSpikeBps: 1000, // 10x spike from average (1000% = 10x)
+            maxConsecutiveFailures: 5, // 5 consecutive failures trigger circuit
             maxRecipientBalance: 10_000_000 * 1e6, // $10M max per recipient
-            feeProtectionEnabled: true      // Global toggle for fee protection
+            feeProtectionEnabled: true // Global toggle for fee protection
         });
     }
 
@@ -210,10 +209,7 @@ contract CircuitBreaker is SecurityBase {
      * @return bool True if circuit was tripped, false otherwise
      * @dev Compares current price to reference price, trips if deviation exceeds maxPriceDeviationBps
      */
-    function checkPriceDeviation(bytes32 marketId, uint256 currentPrice) 
-        public 
-        returns (bool) 
-    {
+    function checkPriceDeviation(bytes32 marketId, uint256 currentPrice) public returns (bool) {
         if (!config.isEnabled) return false;
 
         CommonStructs.CircuitState storage state = circuitStates[marketId];
@@ -248,10 +244,7 @@ contract CircuitBreaker is SecurityBase {
      * @return bool True if circuit was tripped, false otherwise
      * @dev Monitors volume spikes compared to reference volume
      */
-    function checkVolumeSpike(bytes32 marketId, uint256 currentVolume) 
-        public 
-        returns (bool) 
-    {
+    function checkVolumeSpike(bytes32 marketId, uint256 currentVolume) public returns (bool) {
         if (!config.isEnabled) return false;
 
         CommonStructs.CircuitState storage state = circuitStates[marketId];
@@ -283,11 +276,10 @@ contract CircuitBreaker is SecurityBase {
      * @return bool True if circuit was tripped, false otherwise
      * @dev Prevents liquidation cascades by monitoring liquidation rates
      */
-    function checkLiquidationCascade(
-        bytes32 marketId, 
-        uint256 totalPositions, 
-        uint256 liquidatedPositions
-    ) public returns (bool) {
+    function checkLiquidationCascade(bytes32 marketId, uint256 totalPositions, uint256 liquidatedPositions)
+        public
+        returns (bool)
+    {
         if (!config.isEnabled || totalPositions == 0) return false;
 
         // Calculate liquidation ratio in basis points
@@ -359,14 +351,14 @@ contract CircuitBreaker is SecurityBase {
         if (!config.feeProtectionEnabled) return false;
 
         CommonStructs.FeeCircuitState storage state = feeCircuitState;
-        
+
         state.consecutiveFailures++;
-        
+
         if (state.consecutiveFailures >= config.maxConsecutiveFailures) {
             _tripFeeCircuit(CommonStructs.TripReason.DISTRIBUTION_FAILURE, 0);
             return true;
         }
-        
+
         return false;
     }
 
@@ -377,10 +369,7 @@ contract CircuitBreaker is SecurityBase {
      * @return bool True if circuit was tripped, false otherwise
      * @dev Prevents excessive accumulation in recipient contracts that could become attack targets
      */
-    function checkRecipientBalance(address recipient, uint256 currentBalance) 
-        public 
-        returns (bool) 
-    {
+    function checkRecipientBalance(address recipient, uint256 currentBalance) public returns (bool) {
         if (!config.feeProtectionEnabled) return false;
 
         if (currentBalance > config.maxRecipientBalance) {
@@ -480,8 +469,8 @@ contract CircuitBreaker is SecurityBase {
      * @dev Admin-only function for system parameter tuning
      */
     function updateConfig(
-        uint16 _maxPriceDeviationBps, 
-        uint16 _maxVolumeSpikeBps, 
+        uint16 _maxPriceDeviationBps,
+        uint16 _maxVolumeSpikeBps,
         uint16 _maxLiquidationRateBps,
         uint256 _maxFeeAmount,
         uint16 _maxFeeSpikeBps,
@@ -492,7 +481,7 @@ contract CircuitBreaker is SecurityBase {
         config.maxPriceDeviationBps = _maxPriceDeviationBps;
         config.maxVolumeSpikeBps = _maxVolumeSpikeBps;
         config.maxLiquidationRateBps = _maxLiquidationRateBps;
-        
+
         // Fee distribution protection configuration
         config.maxFeeAmount = _maxFeeAmount;
         config.maxFeeSpikeBps = _maxFeeSpikeBps;
@@ -500,11 +489,7 @@ contract CircuitBreaker is SecurityBase {
         config.maxRecipientBalance = _maxRecipientBalance;
 
         emit ConfigUpdated(
-            _maxPriceDeviationBps, 
-            _maxVolumeSpikeBps, 
-            _maxLiquidationRateBps,
-            _maxFeeAmount,
-            _maxFeeSpikeBps
+            _maxPriceDeviationBps, _maxVolumeSpikeBps, _maxLiquidationRateBps, _maxFeeAmount, _maxFeeSpikeBps
         );
     }
 
@@ -575,7 +560,7 @@ contract CircuitBreaker is SecurityBase {
         CommonStructs.FeeCircuitState storage state = feeCircuitState;
 
         state.isTripped = true;
-        state.tripReason = reason;  
+        state.tripReason = reason;
         state.tripTime = block.timestamp;
         state.triggeredAmount = amount;
 

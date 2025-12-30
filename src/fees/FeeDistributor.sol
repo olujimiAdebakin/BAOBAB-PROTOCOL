@@ -14,7 +14,6 @@ import {AddressUtils} from "../libraries/utils/AddressUtils.sol";
 import {CircuitBreaker} from "../security/CircuitBreaker.sol";
 import {ModuleIds} from "../libraries/utils/ModuleIds.sol";
 
-
 /**
  * @title FeeDistributor – BAOBAB Protocol Revenue Distribution Engine
  * @notice Production-grade fee distribution with instant settlements, emergency controls,
@@ -26,7 +25,7 @@ import {ModuleIds} from "../libraries/utils/ModuleIds.sol";
  *      • Gas-optimized batch operations
  *      • Maker rebate tracking and settlements
  */
-contract FeeDistributor is EmergencyPauser{
+contract FeeDistributor is EmergencyPauser {
     // using SafeERC20 for IERC20;
     using BaobabMath for uint256;
     using AddressUtils for *;
@@ -34,12 +33,11 @@ contract FeeDistributor is EmergencyPauser{
     using ModuleIds for *;
     using CommonStructs for CommonStructs.FeeDistribution;
 
-
     AccessManager public accessManager;
     CircuitBreaker public circuitBreaker;
     // EmergencyPauser public emergencyPauser;
 
-     bytes32 public constant FEE_DISTRIBUTOR_MODULE = ModuleIds.FEE_DISTRIBUTOR; 
+    bytes32 public constant FEE_DISTRIBUTOR_MODULE = ModuleIds.FEE_DISTRIBUTOR;
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                       ROLES & CONSTANTS                                        */
@@ -78,7 +76,6 @@ contract FeeDistributor is EmergencyPauser{
     uint256 public totalDistributions;
     uint256 public lastDistributionTime;
 
-
     CommonStructs.FeeStats public feeStats;
 
     // Maker rebate tracking (for negative maker fees)
@@ -116,7 +113,7 @@ contract FeeDistributor is EmergencyPauser{
     event MakerRebateClaimed(address indexed trader, uint256 amount);
     event AuthorizedDistributorUpdated(address indexed distributor, bool authorized);
     event DistributionFailed(address indexed recipient, uint256 amount, string reason);
-    event EmergencyFundSweep(address indexed emergencyTreasury,uint256 balance);
+    event EmergencyFundSweep(address indexed emergencyTreasury, uint256 balance);
     event KeeperBotUpdated(address indexed oldKeeper, address indexed newKeeper);
     event KeeperDistributionTriggered(address indexed keeper, uint256 amount, uint256 timestamp);
     event FeesCollected(address indexed sender, uint256 amount);
@@ -142,27 +139,26 @@ contract FeeDistributor is EmergencyPauser{
     /*                                         MODIFIERS                                              */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
 
-      modifier onlyRole(bytes32 role) {
+    modifier onlyRole(bytes32 role) {
         require(accessManager.hasRole(role, msg.sender), "Unauthorized");
         _;
     }
 
     modifier onlyAuthorizedDistributor() {
-    // Allow: 
-    // 1. Specifically authorized distributors
-    // 2. Keeper bot (if configured)
-    // 3. FEE_MANAGER_ROLE holders
-    // 4. ADMIN_ROLE holders (as backup)
-    bool isAuthorized = authorizedDistributors[msg.sender] ||
-                       msg.sender == keeperBot ||
-                       accessManager.hasRole(RoleRegistry.FEE_MANAGER_ROLE, msg.sender) ||
-                       accessManager.hasRole(RoleRegistry.ADMIN_ROLE, msg.sender);
-    
-    if (!isAuthorized) {
-        revert UnauthorizedDistributor();
+        // Allow:
+        // 1. Specifically authorized distributors
+        // 2. Keeper bot (if configured)
+        // 3. FEE_MANAGER_ROLE holders
+        // 4. ADMIN_ROLE holders (as backup)
+        bool isAuthorized = authorizedDistributors[msg.sender] || msg.sender == keeperBot
+            || accessManager.hasRole(RoleRegistry.FEE_MANAGER_ROLE, msg.sender)
+            || accessManager.hasRole(RoleRegistry.ADMIN_ROLE, msg.sender);
+
+        if (!isAuthorized) {
+            revert UnauthorizedDistributor();
+        }
+        _;
     }
-    _;
-}
 
     modifier whenDistributionsActive() {
         if (distributionsPaused) revert DistributionIsPaused();
@@ -180,9 +176,7 @@ contract FeeDistributor is EmergencyPauser{
         _;
     }
 
-    
-
-      modifier whenFeeCircuitNotActive() {
+    modifier whenFeeCircuitNotActive() {
         if (circuitBreaker.globalHalt() || circuitBreaker.isFeeCircuitTripped()) {
             revert FeeDistributor__CircuitActive();
         }
@@ -206,7 +200,7 @@ contract FeeDistributor is EmergencyPauser{
      * @param _insuranceFund Insurance fund for protocol risk coverage
      * @param _treasury Protocol treasury for revenue
      * @param _stakingRewards Staking rewards contract for BAOBAB emissions
-     * 
+     *
      * @param admin Administrator address with default privileges
      * @param multisig Multisig address for emergency controls
      */
@@ -220,10 +214,7 @@ contract FeeDistributor is EmergencyPauser{
         address _circuitBreaker,
         address admin,
         address multisig
-    )
-     
-    EmergencyPauser(admin, multisig) {
-      
+    ) EmergencyPauser(admin, multisig) {
         _settlementToken.validateNotZero();
         _liquidityVault.validateContract();
         _insuranceFund.validateContract();
@@ -244,18 +235,16 @@ contract FeeDistributor is EmergencyPauser{
         // placeHolder
         burnAddress = 0x000000000000000000000000000000000000dEaD; // i will be changing this to a proper usdc address later on
 
-      
-
         // Authorize core protocol contracts as distributors
         authorizedDistributors[admin] = true;
 
         // Set default fee distribution (optimized for protocol sustainability)
         feeSplit = CommonStructs.FeeDistribution({
-            treasuryBps: 3200,   // 32% - Protocol development & operations
-            lpBps: 3000,         // 30% - Liquidity provider incentives
-            insuranceBps: 2500,  // 25% - Risk coverage & insurance
-            stakersBps: 1000,    // 10% - BAOBAB staking rewards
-            burnBps: 300         // 3%  - Deflationary tokenomics
+            treasuryBps: 3200, // 32% - Protocol development & operations
+            lpBps: 3000, // 30% - Liquidity provider incentives
+            insuranceBps: 2500, // 25% - Risk coverage & insurance
+            stakersBps: 1000, // 10% - BAOBAB staking rewards
+            burnBps: 300 // 3%  - Deflationary tokenomics
         });
 
         if (!feeSplit.isValidFeeDistribution()) {
@@ -264,22 +253,21 @@ contract FeeDistributor is EmergencyPauser{
     }
 
     function collectFees(uint256 amount) external {
-    // Only allow calls from trusted PositionManager contracts or roles
-    if (!authorizedDistributors[msg.sender]) {
-        revert FeeCollector_NotAuthorized();
+        // Only allow calls from trusted PositionManager contracts or roles
+        if (!authorizedDistributors[msg.sender]) {
+            revert FeeCollector_NotAuthorized();
+        }
+
+        // Tokens should already be transferred to this contract before calling
+        if (!(settlementToken.balanceOf(address(this)) >= amount)) {
+            revert InsufficientBalance();
+        }
+
+        totalFeesCollected += amount;
+
+        // Optionally, update internal tracking or emit event
+        emit FeesCollected(msg.sender, amount);
     }
-
-    // Tokens should already be transferred to this contract before calling
-    if (!(settlementToken.balanceOf(address(this)) >= amount)) {
-        revert InsufficientBalance();
-    }
-
-    totalFeesCollected += amount;
-
-    // Optionally, update internal tracking or emit event
-    emit FeesCollected(msg.sender, amount);
-}
-
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                    CORE DISTRIBUTION LOGIC                                     */
@@ -292,15 +280,14 @@ contract FeeDistributor is EmergencyPauser{
     function distributeFees()
         external
         nonReentrant
-        whenProtocolNotPaused 
+        whenProtocolNotPaused
         whenDistributionsActive
         whenModuleNotPaused(ModuleIds.FEE_DISTRIBUTOR)
         onlyAuthorizedDistributor
         whenFeeCircuitNotActive
     {
-
         uint256 amount = settlementToken.balanceOf(address(this));
-    if (amount < MIN_DISTRIBUTION_AMOUNT) revert InsufficientAmount();
+        if (amount < MIN_DISTRIBUTION_AMOUNT) revert InsufficientAmount();
         _processDistribution(amount);
         // totalFeesCollected += amount;
         // totalDistributions++;
@@ -350,13 +337,13 @@ contract FeeDistributor is EmergencyPauser{
     function distributeFeesBatch(uint256[] calldata amounts)
         external
         nonReentrant
-        whenProtocolNotPaused 
+        whenProtocolNotPaused
         whenDistributionsActive
         whenFeeCircuitNotActive
         onlyAuthorizedDistributor
     {
         uint256 totalAmount = 0;
-        
+
         for (uint256 i = 0; i < amounts.length; i++) {
             if (amounts[i] >= MIN_DISTRIBUTION_AMOUNT) {
                 totalAmount += amounts[i];
@@ -371,7 +358,7 @@ contract FeeDistributor is EmergencyPauser{
      * @notice Claim pending maker rebates (negative fees)
      * @dev Traders can claim rebates accumulated from maker orders
      */
-    function claimMakerRebates() external nonReentrant  whenProtocolNotPaused  whenFeeCircuitNotActive{
+    function claimMakerRebates() external nonReentrant whenProtocolNotPaused whenFeeCircuitNotActive {
         uint256 rebateAmount = pendingMakerRebates[msg.sender];
         require(rebateAmount > 0, "No rebates available");
 
@@ -389,7 +376,7 @@ contract FeeDistributor is EmergencyPauser{
     /**
      * @notice Update fee distribution split configuration
      * @param newSplit New fee distribution configuration
-     * 
+     *
      */
     function setFeeSplit(CommonStructs.FeeDistribution calldata newSplit)
         external
@@ -500,10 +487,7 @@ contract FeeDistributor is EmergencyPauser{
      * @notice Set keeper bot address for automated distributions
      * @param _keeperBot Keeper bot address (0x0 to disable)
      */
-    function setKeeperBot(address _keeperBot)
-        external
-        onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
-    {
+    function setKeeperBot(address _keeperBot) external onlyRole(RoleRegistry.FEE_MANAGER_ROLE) {
         address oldKeeper = keeperBot;
         keeperBot = _keeperBot;
         emit KeeperBotUpdated(oldKeeper, _keeperBot);
@@ -513,10 +497,7 @@ contract FeeDistributor is EmergencyPauser{
      * @notice Set minimum balance threshold for keeper distribution
      * @param _minBalance Minimum USDC balance required (in 6 decimals)
      */
-    function setMinDistributionBalance(uint256 _minBalance)
-        external
-        onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
-    {
+    function setMinDistributionBalance(uint256 _minBalance) external onlyRole(RoleRegistry.FEE_MANAGER_ROLE) {
         minDistributionBalance = _minBalance;
     }
 
@@ -524,10 +505,7 @@ contract FeeDistributor is EmergencyPauser{
      * @notice Set keeper distribution interval
      * @param _interval Interval in seconds (e.g., 1 hours = 3600)
      */
-    function setKeeperDistributionInterval(uint256 _interval)
-        external
-        onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
-    {
+    function setKeeperDistributionInterval(uint256 _interval) external onlyRole(RoleRegistry.FEE_MANAGER_ROLE) {
         require(_interval >= 15 minutes, "Interval too short");
         keeperDistributionInterval = _interval;
     }
@@ -582,49 +560,51 @@ contract FeeDistributor is EmergencyPauser{
      */
     function emergencyFundSweep() external whenFeeCircuitNotActive {
         emergencyTreasury.validateNotZero();
-    // require(emergencyTreasury = address(0), "Emergency treasury not set");
-    
-    uint256 balance = settlementToken.balanceOf(address(this));
-    if (balance > 0) {
-        _safeTransfer(emergencyTreasury, balance);
-        emit EmergencyFundSweep(emergencyTreasury, balance);
+        // require(emergencyTreasury = address(0), "Emergency treasury not set");
+
+        uint256 balance = settlementToken.balanceOf(address(this));
+        if (balance > 0) {
+            _safeTransfer(emergencyTreasury, balance);
+            emit EmergencyFundSweep(emergencyTreasury, balance);
+        }
     }
-}
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                    INTERNAL FUNCTIONS                                          */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
 
     function _processDistribution(uint256 amount) internal {
-    totalFeesCollected += amount;
-    totalDistributions++;
-    lastDistributionTime = block.timestamp;
-    
-    // Update keeper last distribution time if called by keeper
-    if (msg.sender == keeperBot) {
-        lastKeeperDistributionTime = block.timestamp;
-        emit KeeperDistributionTriggered(msg.sender, amount, block.timestamp);
+        totalFeesCollected += amount;
+        totalDistributions++;
+        lastDistributionTime = block.timestamp;
+
+        // Update keeper last distribution time if called by keeper
+        if (msg.sender == keeperBot) {
+            lastKeeperDistributionTime = block.timestamp;
+            emit KeeperDistributionTriggered(msg.sender, amount, block.timestamp);
+        }
+
+        uint256 lpShare = amount.applyBps(feeSplit.lpBps);
+        uint256 insuranceShare = amount.applyBps(feeSplit.insuranceBps);
+        uint256 treasuryShare = amount.applyBps(feeSplit.treasuryBps);
+        uint256 stakerShare = amount.applyBps(feeSplit.stakersBps);
+        uint256 burnShare = amount.applyBps(feeSplit.burnBps);
+
+        feeStats.totalLpFees += lpShare;
+        feeStats.totalInsuranceFees += insuranceShare;
+        feeStats.totalTreasuryFees += treasuryShare;
+        feeStats.totalStakerFees += stakerShare;
+        feeStats.totalBurned += burnShare;
+
+        _distributeToRecipient(liquidityVault, lpShare, "Liquidity Vault");
+        _distributeToRecipient(insuranceFund, insuranceShare, "Insurance Vault");
+        _distributeToRecipient(treasury, treasuryShare, "Treasury Vault");
+        _distributeToRecipient(stakingRewards, stakerShare, "Staking Reward");
+        _distributeToRecipient(burnAddress, burnShare, "Burn");
+
+        emit FeesDistributed(
+            totalDistributions, msg.sender, amount, lpShare, insuranceShare, treasuryShare, stakerShare, burnShare
+        );
     }
-
-    uint256 lpShare = amount.applyBps(feeSplit.lpBps);
-    uint256 insuranceShare = amount.applyBps(feeSplit.insuranceBps);
-    uint256 treasuryShare = amount.applyBps(feeSplit.treasuryBps);
-    uint256 stakerShare = amount.applyBps(feeSplit.stakersBps);
-    uint256 burnShare = amount.applyBps(feeSplit.burnBps);
-
-    feeStats.totalLpFees += lpShare;
-    feeStats.totalInsuranceFees += insuranceShare;
-    feeStats.totalTreasuryFees += treasuryShare;
-    feeStats.totalStakerFees += stakerShare;
-    feeStats.totalBurned += burnShare;
-
-    _distributeToRecipient(liquidityVault, lpShare, "Liquidity Vault");
-    _distributeToRecipient(insuranceFund, insuranceShare, "Insurance Vault");
-    _distributeToRecipient(treasury, treasuryShare, "Treasury Vault");
-    _distributeToRecipient(stakingRewards, stakerShare, "Staking Reward");
-    _distributeToRecipient(burnAddress, burnShare, "Burn");
-
-    emit FeesDistributed(totalDistributions, msg.sender, amount, lpShare, insuranceShare, treasuryShare, stakerShare, burnShare);
-}
 
     /**
      * @notice Internal function to distribute funds with comprehensive error handling
@@ -632,14 +612,14 @@ contract FeeDistributor is EmergencyPauser{
      * @param amount Distribution amount
      * @param recipientName Human-readable recipient name for error reporting
      */
-     function _distributeToRecipient(address to, uint256 amount, string memory recipientName) internal {
-        if (amount == 0 || to == address(0)) return ;
+    function _distributeToRecipient(address to, uint256 amount, string memory recipientName) internal {
+        if (amount == 0 || to == address(0)) return;
 
         bool success = _attemptTransfer(to, amount, recipientName);
         if (!success) {
             feeStats.failedDistributions++;
             emit DistributionFailed(to, amount, "Transfer failed");
-            
+
             if (distributionsPaused && emergencyTreasury != address(0)) {
                 _attemptTransfer(emergencyTreasury, amount, recipientName);
             }
@@ -655,14 +635,13 @@ contract FeeDistributor is EmergencyPauser{
     // }
 
     function _attemptTransfer(address to, uint256 amount, string memory recipientName) internal returns (bool) {
-    // settlementToken is IERC20
-    (bool success, bytes memory data) = address(settlementToken).call(
-        abi.encodeWithSelector(settlementToken.transfer.selector, to, amount, recipientName)
-    );
-    // Return true only if call succeeded and either no data returned or data is true
-    return success && (data.length == 0 || abi.decode(data, (bool)));
-}
-
+        // settlementToken is IERC20
+        (bool success, bytes memory data) = address(settlementToken).call(
+            abi.encodeWithSelector(settlementToken.transfer.selector, to, amount, recipientName)
+        );
+        // Return true only if call succeeded and either no data returned or data is true
+        return success && (data.length == 0 || abi.decode(data, (bool)));
+    }
 
     function _safeTransfer(address to, uint256 amount) internal {
         SafeTransfer.safeTransfer(settlementToken, to, amount);
@@ -712,8 +691,7 @@ contract FeeDistributor is EmergencyPauser{
      * @return Whether address is authorized
      */
     function isAuthorizedDistributor(address distributor) external view returns (bool) {
-       return authorizedDistributors[distributor] || 
-               accessManager.hasRole(RoleRegistry.FEE_MANAGER_ROLE, distributor);
+        return authorizedDistributors[distributor] || accessManager.hasRole(RoleRegistry.FEE_MANAGER_ROLE, distributor);
     }
 
     /**

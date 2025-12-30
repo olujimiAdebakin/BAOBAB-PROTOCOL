@@ -88,7 +88,6 @@ library RoleRegistry {
      */
     bytes32 public constant FEE_DISTRIBTOR_ROLE = keccak256("FEE_DISTRIBUTOR_ROLE");
 
-    
     // bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER");
 
     /**

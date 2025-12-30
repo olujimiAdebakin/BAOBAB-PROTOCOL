@@ -47,35 +47,35 @@ contract StakingRewards is EmergencyPauser {
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
 
     // User staking information
-    mapping(address => uint256) public stakedBalance;           // Amount of BAOBAB staked by user
-    mapping(address => uint256) public rewardDebt;              // Rewards already claimed by user
-    mapping(address => uint256) public lastStakeTime;           // Last time user staked
-    mapping(address => uint256) public lastUnstakeTime;         // Last time user unstaked
-    mapping(address => uint256) public unstakingAmount;         // Amount pending unstaking (cooldown)
-    mapping(address => uint256) public unstakingReleaseTime;    // When unstaking becomes available
+    mapping(address => uint256) public stakedBalance; // Amount of BAOBAB staked by user
+    mapping(address => uint256) public rewardDebt; // Rewards already claimed by user
+    mapping(address => uint256) public lastStakeTime; // Last time user staked
+    mapping(address => uint256) public lastUnstakeTime; // Last time user unstaked
+    mapping(address => uint256) public unstakingAmount; // Amount pending unstaking (cooldown)
+    mapping(address => uint256) public unstakingReleaseTime; // When unstaking becomes available
 
     // Total protocol staking
-    uint256 public totalStaked;                                 // Total BAOBAB staked by all users
-    uint256 public totalRewardsClaimed;                         // Total USDC rewards claimed
-    uint256 public totalRewardsAccumulated;                     // Total USDC rewards ever received
+    uint256 public totalStaked; // Total BAOBAB staked by all users
+    uint256 public totalRewardsClaimed; // Total USDC rewards claimed
+    uint256 public totalRewardsAccumulated; // Total USDC rewards ever received
 
     // Reward tracking
-    uint256 public accumulatedRewardsPerShare;                  // Cumulative rewards per staked token
-    uint256 public constant REWARD_PRECISION = 1e12;            // Precision for reward calculations
+    uint256 public accumulatedRewardsPerShare; // Cumulative rewards per staked token
+    uint256 public constant REWARD_PRECISION = 1e12; // Precision for reward calculations
 
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                      CONFIGURATION & CONTROL                                    */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
 
     // Staking configuration
-    uint256 public unstakingCooldown = 7 days;                  // Cooldown period before unstaking completes
-    uint256 public minStakingAmount = 1e18;                     // Minimum 1 BAOBAB to stake
+    uint256 public unstakingCooldown = 7 days; // Cooldown period before unstaking completes
+    uint256 public minStakingAmount = 1e18; // Minimum 1 BAOBAB to stake
     bool public stakingEnabled = true;
 
     // Epoch tracking
     uint256 public currentEpoch;
     uint256 public epochStartTime;
-    uint256 public epochDuration = 7 days;                      // Weekly reward epochs
+    uint256 public epochDuration = 7 days; // Weekly reward epochs
 
     // Emergency controls
     address public emergencyTreasury;
@@ -148,13 +148,9 @@ contract StakingRewards is EmergencyPauser {
      * @param admin Admin address with initial privileges
      * @param multisig Multisig for emergency controls
      */
-    constructor(
-        address _baobabToken,
-        address _rewardToken,
-        address _accessManager,
-        address admin,
-        address multisig
-    ) EmergencyPauser(admin, multisig) {
+    constructor(address _baobabToken, address _rewardToken, address _accessManager, address admin, address multisig)
+        EmergencyPauser(admin, multisig)
+    {
         _baobabToken.validateContract();
         _rewardToken.validateContract();
         _accessManager.validateContract();
@@ -207,12 +203,7 @@ contract StakingRewards is EmergencyPauser {
      * @param amount Amount of BAOBAB to unstake
      * @dev Must wait `unstakingCooldown` period before completing unstaking
      */
-    function initiateUnstaking(uint256 amount)
-        external
-        nonReentrant
-        whenProtocolNotPaused
-        hasStake(msg.sender)
-    {
+    function initiateUnstaking(uint256 amount) external nonReentrant whenProtocolNotPaused hasStake(msg.sender) {
         require(amount > 0, "Amount must be > 0");
         require(stakedBalance[msg.sender] >= amount, "Insufficient staked balance");
 
@@ -238,11 +229,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Complete unstaking and withdraw BAOBAB after cooldown
      * @dev Can only be called after `unstakingCooldown` period has passed
      */
-    function completeUnstaking()
-        external
-        nonReentrant
-        whenProtocolNotPaused
-    {
+    function completeUnstaking() external nonReentrant whenProtocolNotPaused {
         uint256 amount = unstakingAmount[msg.sender];
         if (amount == 0) revert NoUnstakingInitiated();
         if (block.timestamp < unstakingReleaseTime[msg.sender]) revert UnstakingNotReady();
@@ -265,11 +252,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Claim accumulated USDC rewards
      * @dev Rewards distributed proportionally based on staked amount and time
      */
-    function claimRewards()
-        external
-        nonReentrant
-        whenProtocolNotPaused
-    {
+    function claimRewards() external nonReentrant whenProtocolNotPaused {
         uint256 pendingReward = _calculatePendingReward(msg.sender);
         if (pendingReward == 0) revert NoRewardsAccumulated();
 
@@ -314,10 +297,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Finalize current epoch and prepare for next epoch
      * @dev Moves to next weekly epoch for better reward tracking
      */
-    function finalizeEpoch()
-        external
-        onlyRole(RoleRegistry.FEE_MANAGER_ROLE)
-    {
+    function finalizeEpoch() external onlyRole(RoleRegistry.FEE_MANAGER_ROLE) {
         emit EpochFinalized(currentEpoch, totalRewardsAccumulated - totalRewardsClaimed, accumulatedRewardsPerShare);
 
         // Move to next epoch
@@ -333,10 +313,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Set unstaking cooldown period
      * @param _cooldownPeriod New cooldown period in seconds (min 1 day, max 30 days)
      */
-    function setUnstakingCooldown(uint256 _cooldownPeriod)
-        external
-        onlyRole(RoleRegistry.ADMIN_ROLE)
-    {
+    function setUnstakingCooldown(uint256 _cooldownPeriod) external onlyRole(RoleRegistry.ADMIN_ROLE) {
         require(_cooldownPeriod >= 1 days && _cooldownPeriod <= 30 days, "Invalid cooldown");
         uint256 oldValue = unstakingCooldown;
         unstakingCooldown = _cooldownPeriod;
@@ -347,10 +324,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Set minimum staking amount
      * @param _minAmount Minimum BAOBAB amount to stake
      */
-    function setMinStakingAmount(uint256 _minAmount)
-        external
-        onlyRole(RoleRegistry.ADMIN_ROLE)
-    {
+    function setMinStakingAmount(uint256 _minAmount) external onlyRole(RoleRegistry.ADMIN_ROLE) {
         require(_minAmount > 0, "Min amount must be > 0");
         uint256 oldValue = minStakingAmount;
         minStakingAmount = _minAmount;
@@ -361,10 +335,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Enable or disable staking
      * @param enabled Whether staking is enabled
      */
-    function setStakingEnabled(bool enabled)
-        external
-        onlyRole(RoleRegistry.ADMIN_ROLE)
-    {
+    function setStakingEnabled(bool enabled) external onlyRole(RoleRegistry.ADMIN_ROLE) {
         stakingEnabled = enabled;
         emit StakingEnabled(enabled);
     }
@@ -373,10 +344,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Set epoch duration
      * @param _duration New epoch duration in seconds (min 1 day, max 30 days)
      */
-    function setEpochDuration(uint256 _duration)
-        external
-        onlyRole(RoleRegistry.ADMIN_ROLE)
-    {
+    function setEpochDuration(uint256 _duration) external onlyRole(RoleRegistry.ADMIN_ROLE) {
         require(_duration >= 1 days && _duration <= 30 days, "Invalid duration");
         uint256 oldValue = epochDuration;
         epochDuration = _duration;
@@ -387,10 +355,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Set emergency treasury for reward distribution fallback
      * @param _emergencyTreasury Emergency treasury address
      */
-    function setEmergencyTreasury(address _emergencyTreasury)
-        external
-        onlyRole(RoleRegistry.EMERGENCY_ADMIN)
-    {
+    function setEmergencyTreasury(address _emergencyTreasury) external onlyRole(RoleRegistry.EMERGENCY_ADMIN) {
         _emergencyTreasury.validateNotZero();
         address oldTreasury = emergencyTreasury;
         emergencyTreasury = _emergencyTreasury;
@@ -401,11 +366,7 @@ contract StakingRewards is EmergencyPauser {
      * @notice Emergency withdrawal (only when protocol is paused)
      * @dev Allows users to withdraw staked tokens during emergencies
      */
-    function emergencyWithdraw()
-        external
-        nonReentrant
-         whenProtocolNotPaused
-    {
+    function emergencyWithdraw() external nonReentrant whenProtocolNotPaused {
         uint256 stakedAmount = stakedBalance[msg.sender];
         uint256 unstakedAmount = unstakingAmount[msg.sender];
 
@@ -456,48 +417,48 @@ contract StakingRewards is EmergencyPauser {
         return _calculatePendingReward(staker);
     }
 
-/**
- * @notice Get staking information for a specific user
- * @param staker Address of the staker to query
- * @return staked Amount of BAOBAB tokens currently staked by the user
- * @return pending Amount of USDC rewards pending claim by the user
- * @return unstaking Amount of BAOBAB tokens currently in the unstaking process
- * @return releaseTime Timestamp when unstaked tokens become available for withdrawal
- */
-function getStakerInfo(address staker)
-    external
-    view
-    returns (uint256 staked, uint256 pending, uint256 unstaking, uint256 releaseTime)
-{
-    staked = stakedBalance[staker];
-    pending = _calculatePendingReward(staker);
-    unstaking = unstakingAmount[staker];
-    releaseTime = unstakingReleaseTime[staker];
-}
-
-/**
- * @notice Get protocol-wide staking statistics
- * @return total Total amount of BAOBAB tokens staked across all users
- * @return claimed Total amount of USDC rewards claimed by all users
- * @return accumulated Total amount of USDC rewards accumulated for distribution
- * @return apy Current Annual Percentage Yield (APY) for stakers, scaled by 100 (e.g., 500 = 5% APY)
- */
-function getProtocolStats()
-    external
-    view
-    returns (uint256 total, uint256 claimed, uint256 accumulated, uint256 apy)
-{
-    total = totalStaked;
-    claimed = totalRewardsClaimed;
-    accumulated = totalRewardsAccumulated;
-    
-    // Calculate APY: (annual rewards / total staked) * 100
-    // APY returned as percentage scaled by 100 (e.g., 500 = 5%)
-    if (totalStaked > 0) {
-        uint256 weeklyRewards = totalRewardsAccumulated / 52;
-        apy = (weeklyRewards * 52 * 100) / totalStaked;
+    /**
+     * @notice Get staking information for a specific user
+     * @param staker Address of the staker to query
+     * @return staked Amount of BAOBAB tokens currently staked by the user
+     * @return pending Amount of USDC rewards pending claim by the user
+     * @return unstaking Amount of BAOBAB tokens currently in the unstaking process
+     * @return releaseTime Timestamp when unstaked tokens become available for withdrawal
+     */
+    function getStakerInfo(address staker)
+        external
+        view
+        returns (uint256 staked, uint256 pending, uint256 unstaking, uint256 releaseTime)
+    {
+        staked = stakedBalance[staker];
+        pending = _calculatePendingReward(staker);
+        unstaking = unstakingAmount[staker];
+        releaseTime = unstakingReleaseTime[staker];
     }
-}
+
+    /**
+     * @notice Get protocol-wide staking statistics
+     * @return total Total amount of BAOBAB tokens staked across all users
+     * @return claimed Total amount of USDC rewards claimed by all users
+     * @return accumulated Total amount of USDC rewards accumulated for distribution
+     * @return apy Current Annual Percentage Yield (APY) for stakers, scaled by 100 (e.g., 500 = 5% APY)
+     */
+    function getProtocolStats()
+        external
+        view
+        returns (uint256 total, uint256 claimed, uint256 accumulated, uint256 apy)
+    {
+        total = totalStaked;
+        claimed = totalRewardsClaimed;
+        accumulated = totalRewardsAccumulated;
+
+        // Calculate APY: (annual rewards / total staked) * 100
+        // APY returned as percentage scaled by 100 (e.g., 500 = 5%)
+        if (totalStaked > 0) {
+            uint256 weeklyRewards = totalRewardsAccumulated / 52;
+            apy = (weeklyRewards * 52 * 100) / totalStaked;
+        }
+    }
 
     /**
      * @notice Check if user is currently unstaking
@@ -505,11 +466,7 @@ function getProtocolStats()
      * @return isUnstaking True if user has pending unstaking
      * @return timeRemaining Seconds until unstaking completes
      */
-    function getUnstakingStatus(address user)
-        external
-        view
-        returns (bool isUnstaking, uint256 timeRemaining)
-    {
+    function getUnstakingStatus(address user) external view returns (bool isUnstaking, uint256 timeRemaining) {
         isUnstaking = unstakingAmount[user] > 0;
         if (isUnstaking && block.timestamp < unstakingReleaseTime[user]) {
             timeRemaining = unstakingReleaseTime[user] - block.timestamp;
