@@ -254,11 +254,10 @@ contract RateLimiter {
 
         // Liquidity operations
         _setTieredLimit("ADD_LIQUIDITY", 5, 15, 50, 200, 1 minutes);
-         _setTieredLimit("REMOVE_LIQUIDITY", 5, 15, 50, 200, 1 minutes);
+        _setTieredLimit("REMOVE_LIQUIDITY", 5, 15, 50, 200, 1 minutes);
 
         // Funding application
         _setTieredLimit("APPLY_FUNDING", 10, 20, 50, 200, 1 minutes);
-      
 
         // Order NFT operations
         _setTieredLimit("BORROW_AGAINST_ORDER", 3, 10, 30, 100, 1 hours);

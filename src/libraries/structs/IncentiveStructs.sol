@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
@@ -11,10 +10,10 @@ library IncentiveStructs {
      * @dev VIP tier configuration — stored in FeeCalculator
      */
     struct Tier {
-        uint256 minVolume30d;            // USD threshold (18 decimals)
-        int256 makerRebateBps;          // negative = rebate (e.g. -5 = 5 bps rebate)
-        uint256 takerDiscountBps;        // discount on taker fee
-        uint256 referralBonusBps;        // extra for referrers
+        uint256 minVolume30d; // USD threshold (18 decimals)
+        int256 makerRebateBps; // negative = rebate (e.g. -5 = 5 bps rebate)
+        uint256 takerDiscountBps; // discount on taker fee
+        uint256 referralBonusBps; // extra for referrers
     }
 
     /**
@@ -22,7 +21,7 @@ library IncentiveStructs {
      */
     struct RebateClaim {
         address user;
-        uint256 amount;                  // 18 decimals
+        uint256 amount; // 18 decimals
         uint256 claimableAfter;
         bool claimed;
     }

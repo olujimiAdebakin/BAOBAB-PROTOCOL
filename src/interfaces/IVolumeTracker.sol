@@ -6,7 +6,6 @@ pragma solidity ^0.8.24;
  * @notice Interface for the VolumeTracker contract, which tracks user trading volumes over time.
  */
 interface IVolumeTracker {
-
     /// @notice Struct representing a user's volume in a specific market
     struct MarketVolume {
         bytes32 marketId;

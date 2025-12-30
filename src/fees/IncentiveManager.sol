@@ -12,7 +12,7 @@ import {VolumeTracker} from "../fees/VolumeTracker.sol";
  * @title IncentiveManager
  * @author BAOBAB Protocol
  * @notice Comprehensive rewards system managing trading incentives, user tiers, and referral programs
- * @dev Tracks user trading volume across rolling time windows, distributes rewards in epochs, 
+ * @dev Tracks user trading volume across rolling time windows, distributes rewards in epochs,
  *      implements tier-based multipliers with Sybil attack protections, and manages referral bonuses.
  *      Includes pool enforcement to prevent reward over-distribution and automatic epoch lifecycle.
  */
@@ -26,48 +26,48 @@ contract IncentiveManager is SecurityBase {
     /// @notice Comprehensive user trading activity and reward tracking
     /// @dev Includes rolling volume windows for accurate tier calculations
     struct UserStats {
-        uint256 totalVolumeTraded;       // Lifetime trading volume (18 decimals)
-        uint256 currentEpochVolume;      // Volume in current epoch (18 decimals)
-        uint256 lastTradeTimestamp;      // Last trade timestamp (for rolling window calculations)
-        uint256 totalRewardsEarned;      // Cumulative rewards earned (18 decimals)
-        uint256 pendingRewards;          // Unclaimed rewards (18 decimals)
-        address referrer;                // User's referrer address (immutable once set)
-        uint256 referralCount;           // Total number of successful referrals made
-        uint256 referralRewards;         // Cumulative rewards earned from referrals (18 decimals)
-        uint8 tier;                      // Current user tier (0-4)
-        uint256 lastTierUpdateTime;      // Timestamp of last tier calculation for downgrading
-        uint256 volume30dAgo;            // Rolling window: volume from 30 days ago
-        uint256 rollWindowStartTime;     // Start of rolling 30-day window
+        uint256 totalVolumeTraded; // Lifetime trading volume (18 decimals)
+        uint256 currentEpochVolume; // Volume in current epoch (18 decimals)
+        uint256 lastTradeTimestamp; // Last trade timestamp (for rolling window calculations)
+        uint256 totalRewardsEarned; // Cumulative rewards earned (18 decimals)
+        uint256 pendingRewards; // Unclaimed rewards (18 decimals)
+        address referrer; // User's referrer address (immutable once set)
+        uint256 referralCount; // Total number of successful referrals made
+        uint256 referralRewards; // Cumulative rewards earned from referrals (18 decimals)
+        uint8 tier; // Current user tier (0-4)
+        uint256 lastTierUpdateTime; // Timestamp of last tier calculation for downgrading
+        uint256 volume30dAgo; // Rolling window: volume from 30 days ago
+        uint256 rollWindowStartTime; // Start of rolling 30-day window
     }
 
     /// @notice Configuration for a reward tier
     /// @dev Tiers provide multipliers and fee discounts based on user activity
     struct RewardTier {
-        uint256 minVolume;               // Minimum 30-day rolling volume to reach tier (18 decimals)
-        uint256 rewardMultiplier;        // Reward multiplier in basis points (10000 = 1x)
-        uint256 tradingFeeDiscount;      // Trading fee discount in basis points (max 2000 = 20%)
-        string name;                     // Human-readable tier name
+        uint256 minVolume; // Minimum 30-day rolling volume to reach tier (18 decimals)
+        uint256 rewardMultiplier; // Reward multiplier in basis points (10000 = 1x)
+        uint256 tradingFeeDiscount; // Trading fee discount in basis points (max 2000 = 20%)
+        string name; // Human-readable tier name
     }
 
     /// @notice Epoch configuration for organized reward distribution
     /// @dev Tracks rewards per epoch with finalization mechanism
     struct Epoch {
-        uint256 startTime;               // Epoch start timestamp
-        uint256 endTime;                 // Epoch end timestamp (usually startTime + 30 days)
-        uint256 totalRewardsPool;        // Total BAOBAB rewards allocated to this epoch
-        uint256 totalVolumeTraded;       // Cumulative trading volume in this epoch
-        uint256 claimedRewards;          // Rewards already claimed from this epoch
-        bool finalized;                  // True once epoch is closed and cannot accept new trades
+        uint256 startTime; // Epoch start timestamp
+        uint256 endTime; // Epoch end timestamp (usually startTime + 30 days)
+        uint256 totalRewardsPool; // Total BAOBAB rewards allocated to this epoch
+        uint256 totalVolumeTraded; // Cumulative trading volume in this epoch
+        uint256 claimedRewards; // Rewards already claimed from this epoch
+        bool finalized; // True once epoch is closed and cannot accept new trades
     }
 
     /// @notice Configuration for referral incentive calculations
     /// @dev Separate from trading rewards, applied on top when applicable
     struct ReferralReward {
-        uint256 referrerShare;           // Percentage of base rewards given to referrer (basis points)
-        uint256 refereeBonus;            // Percentage bonus applied to referee rewards (basis points)
-        uint256 minVolumeRequired;       // Minimum trade volume to trigger referral rewards (18 decimals)
-        uint256 cooldownPeriod;          // Cooldown between referral registrations (seconds)
-        uint256 maxReferralsPerEpoch;    // Maximum referrals one user can make per epoch
+        uint256 referrerShare; // Percentage of base rewards given to referrer (basis points)
+        uint256 refereeBonus; // Percentage bonus applied to referee rewards (basis points)
+        uint256 minVolumeRequired; // Minimum trade volume to trigger referral rewards (18 decimals)
+        uint256 cooldownPeriod; // Cooldown between referral registrations (seconds)
+        uint256 maxReferralsPerEpoch; // Maximum referrals one user can make per epoch
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════
@@ -96,9 +96,9 @@ contract IncentiveManager is SecurityBase {
     uint256 public pendingChangeTimestamp;
 
     // Reward system parameters
-    uint256 public constant BASIS_POINTS = 10_000;          // Basis points divisor for percentages
-    uint256 public constant EPOCH_DURATION = 30 days;       // Duration of each rewards epoch
-    uint256 public constant ROLLING_WINDOW = 30 days;       // Rolling window for tier calculations
+    uint256 public constant BASIS_POINTS = 10_000; // Basis points divisor for percentages
+    uint256 public constant EPOCH_DURATION = 30 days; // Duration of each rewards epoch
+    uint256 public constant ROLLING_WINDOW = 30 days; // Rolling window for tier calculations
 
     /// @notice Current active epoch ID
     uint256 public currentEpochId;
@@ -114,7 +114,7 @@ contract IncentiveManager is SecurityBase {
     uint256 public constant MAX_REWARD_MULTIPLIER = 50000; // 5x maximum
 
     /// @notice Maximum fee discount tier can provide (basis points)
-    uint256 public constant MAX_FEE_DISCOUNT = 2000;        // 20% maximum discount
+    uint256 public constant MAX_FEE_DISCOUNT = 2000; // 20% maximum discount
 
     // Storage mappings
     /// @notice User address → User trading statistics and tier
@@ -144,27 +144,13 @@ contract IncentiveManager is SecurityBase {
     // ═══════════════════════════════════════════════════════════════════════════════════
 
     /// @notice Emitted when a user's trade is recorded and rewards calculated
-    event TradeRecorded(
-        address indexed user,
-        uint256 volume,
-        uint256 rewardsEarned,
-        uint8 userTier,
-        uint256 timestamp
-    );
+    event TradeRecorded(address indexed user, uint256 volume, uint256 rewardsEarned, uint8 userTier, uint256 timestamp);
 
     /// @notice Emitted when a user successfully claims pending rewards
-    event RewardsClaimed(
-        address indexed user,
-        uint256 amount,
-        uint256 timestamp
-    );
+    event RewardsClaimed(address indexed user, uint256 amount, uint256 timestamp);
 
     /// @notice Emitted when a referral relationship is established
-    event ReferralRegistered(
-        address indexed referee,
-        address indexed referrer,
-        uint256 timestamp
-    );
+    event ReferralRegistered(address indexed referee, address indexed referrer, uint256 timestamp);
 
     /// @notice Emitted when referral bonuses are distributed
     event ReferralRewardPaid(
@@ -176,53 +162,26 @@ contract IncentiveManager is SecurityBase {
     );
 
     /// @notice Emitted when user tier changes (upgrade or downgrade)
-    event TierUpgraded(
-        address indexed user,
-        uint8 oldTier,
-        uint8 newTier,
-        uint256 timestamp
-    );
+    event TierUpgraded(address indexed user, uint8 oldTier, uint8 newTier, uint256 timestamp);
 
-    event TierDowngraded(
-        address indexed user,
-        uint8 oldTier,
-        uint8 newTier,
-        uint256 timestamp
-    );
+    event TierDowngraded(address indexed user, uint8 oldTier, uint8 newTier, uint256 timestamp);
 
     /// @notice Emitted when a new epoch begins
-    event EpochStarted(
-        uint256 indexed epochId,
-        uint256 startTime,
-        uint256 endTime,
-        uint256 rewardsPool
-    );
+    event EpochStarted(uint256 indexed epochId, uint256 startTime, uint256 endTime, uint256 rewardsPool);
 
     /// @notice Emitted when an epoch is finalized and closed
     event EpochFinalized(
-        uint256 indexed epochId,
-        uint256 totalVolume,
-        uint256 totalRewardsPool,
-        uint256 claimedRewards
+        uint256 indexed epochId, uint256 totalVolume, uint256 totalRewardsPool, uint256 claimedRewards
     );
 
     /// @notice Emitted when admin funds the rewards pool for current epoch
-    event RewardsPoolFunded(
-        uint256 indexed epochId,
-        uint256 amount
-    );
+    event RewardsPoolFunded(uint256 indexed epochId, uint256 amount);
 
     /// @notice Emitted when admin updates parameter with timelock
-    event ParameterChangeInitiated(
-        bytes32 indexed parameterHash,
-        uint256 timestamp
-    );
+    event ParameterChangeInitiated(bytes32 indexed parameterHash, uint256 timestamp);
 
     /// @notice Emitted when pending parameter change is executed
-    event ParameterChangeExecuted(
-        bytes32 indexed parameterHash,
-        uint256 timestamp
-    );
+    event ParameterChangeExecuted(bytes32 indexed parameterHash, uint256 timestamp);
 
     /// @notice Emitted when admin updates referral configuration
     event ReferralConfigUpdated(
@@ -235,19 +194,11 @@ contract IncentiveManager is SecurityBase {
     );
 
     /// @notice Emitted when reward multiplier is updated
-    event RewardsPerVolumeUpdated(
-        uint256 oldValue,
-        uint256 newValue,
-        uint256 timestamp
-    );
+    event RewardsPerVolumeUpdated(uint256 oldValue, uint256 newValue, uint256 timestamp);
 
     /// @notice Emitted when tier configuration is updated
     event TierConfigUpdated(
-        uint8 tier,
-        uint256 minVolume,
-        uint256 rewardMultiplier,
-        uint256 feeDiscount,
-        uint256 timestamp
+        uint8 tier, uint256 minVolume, uint256 rewardMultiplier, uint256 feeDiscount, uint256 timestamp
     );
 
     // ═══════════════════════════════════════════════════════════════════════════════════
@@ -308,11 +259,7 @@ contract IncentiveManager is SecurityBase {
     /// @param _collateralToken Address of collateral token used in protocol
     /// @param _admin Address that will have admin privileges
     /// @dev Validates all input addresses are non-zero and are contracts
-    constructor(
-        address _baobabToken,
-        address _collateralToken,
-        address _admin
-    ) {
+    constructor(address _baobabToken, address _collateralToken, address _admin) {
         // Validate addresses using AddressUtils library
         _baobabToken.isContract();
         _collateralToken.isContract();
@@ -326,7 +273,7 @@ contract IncentiveManager is SecurityBase {
         // Initialize reward tier configurations and referral settings
         _initializeRewardTiers();
         _initializeReferralConfig();
-        
+
         // Start the first epoch
         _startNewEpoch();
     }
@@ -363,11 +310,7 @@ contract IncentiveManager is SecurityBase {
     /// @param volumeTraded The volume of the trade in USD (18 decimals)
     /// @dev Only callable by PositionManager; calculates rewards based on volume and tier multiplier,
     ///      checks for tier upgrades/downgrades, handles referral bonuses, updates epoch metrics
-    function recordTrade(address user, uint256 volumeTraded) 
-        external 
-        onlyPositionManager 
-        epochNotExpired
-    {
+    function recordTrade(address user, uint256 volumeTraded) external onlyPositionManager epochNotExpired {
         // Exit early if trading rewards are disabled by admin
         if (!tradingRewardsEnabled) return;
 
@@ -378,7 +321,7 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Update volume tracking
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         stats.totalVolumeTraded += volumeTraded;
         stats.currentEpochVolume += volumeTraded;
         stats.lastTradeTimestamp = block.timestamp;
@@ -388,9 +331,9 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Check tier eligibility using rolling 30-day window
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         uint8 newTier = _calculateTierFromRollingVolume(user);
-        
+
         // Emit event if tier changed (upgrade or downgrade)
         if (newTier != stats.tier) {
             if (newTier > stats.tier) {
@@ -405,13 +348,13 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Calculate base rewards and apply tier multiplier
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         // Base rewards: (volume * rewardsPerVolumeUnit) / 1e18
         uint256 baseRewards = (volumeTraded * rewardsPerVolumeUnit) / 1e18;
-        
+
         // Get tier multiplier in basis points (10000 = 1x)
         uint256 multiplier = rewardTiers[stats.tier].rewardMultiplier;
-        
+
         // Apply multiplier: (baseRewards * multiplier) / 10000
         uint256 totalRewards = (baseRewards * multiplier) / BASIS_POINTS;
 
@@ -422,7 +365,7 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Distribute referral bonuses if program is enabled and user has a referrer
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         if (referralProgramEnabled && stats.referrer != address(0)) {
             _distributeReferralRewards(user, volumeTraded);
         }
@@ -436,7 +379,7 @@ contract IncentiveManager is SecurityBase {
      */
     function claimRewards() external nonReentrant {
         UserStats storage stats = userStats[msg.sender];
-        
+
         if (stats.pendingRewards == 0) revert IncentiveManager__NoRewardsToClaim();
 
         // Cache pending amount and reset balance atomically to prevent reentrancy
@@ -446,10 +389,10 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Verify epoch pool has sufficient rewards (prevent over-distribution)
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         Epoch storage epoch = epochs[currentEpochId];
         uint256 availableRewards = epoch.totalRewardsPool - epoch.claimedRewards;
-        
+
         if (availableRewards < rewardsToClaim) {
             // Restore pending rewards and revert if pool is insufficient
             stats.pendingRewards = rewardsToClaim;
@@ -463,7 +406,7 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Transfer rewards to user using SafeTransfer library direct call
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         SafeTransfer.safeTransfer(baobabToken, msg.sender, rewardsToClaim);
 
         emit RewardsClaimed(msg.sender, rewardsToClaim, block.timestamp);
@@ -480,7 +423,7 @@ contract IncentiveManager is SecurityBase {
         }
 
         UserStats storage refereeStats = userStats[msg.sender];
-        
+
         if (refereeStats.referrer != address(0)) {
             revert IncentiveManager__AlreadyReferred();
         }
@@ -488,9 +431,9 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Check Sybil attack protections: cooldown and max referrals per epoch
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         UserStats storage referrerStats = userStats[referrer];
-        
+
         // Check if referrer is in cooldown from last registration
         if (lastReferralEpoch[referrer] == currentEpochId) {
             // Count referrals in this epoch
@@ -503,7 +446,7 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Register referral relationship and update metrics
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         refereeStats.referrer = referrer;
         referrerStats.referralCount++;
         lastReferralEpoch[referrer] = currentEpochId;
@@ -523,7 +466,7 @@ contract IncentiveManager is SecurityBase {
     function _distributeReferralRewards(address referee, uint256 volume) internal {
         UserStats storage refereeStats = userStats[referee];
         address referrer = refereeStats.referrer;
-        
+
         // Exit early if minimum volume requirement not met
         if (refereeStats.currentEpochVolume < referralConfig.minVolumeRequired) {
             return;
@@ -534,13 +477,13 @@ contract IncentiveManager is SecurityBase {
         // ════════════════════════════════════════════════════════════════════════════════
         // Calculate base referral rewards and distribute to both parties
         // ════════════════════════════════════════════════════════════════════════════════
-        
+
         // Base rewards for this trade
         uint256 baseRewards = (volume * rewardsPerVolumeUnit) / 1e18;
-        
+
         // Calculate referrer's share (e.g., 10% of base rewards)
         uint256 referrerReward = (baseRewards * referralConfig.referrerShare) / BASIS_POINTS;
-        
+
         // Calculate referee's bonus (e.g., 5% additional on top of their own rewards)
         uint256 refereeBonus = (baseRewards * referralConfig.refereeBonus) / BASIS_POINTS;
 
@@ -559,14 +502,14 @@ contract IncentiveManager is SecurityBase {
     ///      when users reduce activity
     function _calculateTierFromRollingVolume(address user) internal view returns (uint8) {
         UserStats storage stats = userStats[user];
-        
+
         // Calculate volume in rolling 30-day window
         uint256 currentTime = block.timestamp;
-        
+
         // Get volume from rolling window (simplified: using lastTierUpdateTime as proxy)
         // In production, would maintain detailed time-series data
         uint256 rolling30dVolume = stats.currentEpochVolume;
-        
+
         // If more than 30 days since last update, reset rolling volume
         if (currentTime - stats.lastTierUpdateTime > ROLLING_WINDOW) {
             rolling30dVolume = stats.currentEpochVolume;
@@ -586,40 +529,40 @@ contract IncentiveManager is SecurityBase {
         // Tier 0: Retail - No requirements
         rewardTiers[0] = RewardTier({
             minVolume: 0,
-            rewardMultiplier: 10000,      // 1x (100%) - baseline
-            tradingFeeDiscount: 0,        // 0% discount
+            rewardMultiplier: 10000, // 1x (100%) - baseline
+            tradingFeeDiscount: 0, // 0% discount
             name: "Retail"
         });
 
         // Tier 1: Active Trader - $10k volume
         rewardTiers[1] = RewardTier({
             minVolume: 10_000e18,
-            rewardMultiplier: 12000,      // 1.2x (120%) - 20% boost
-            tradingFeeDiscount: 500,      // 5% discount on trading fees
+            rewardMultiplier: 12000, // 1.2x (120%) - 20% boost
+            tradingFeeDiscount: 500, // 5% discount on trading fees
             name: "Active"
         });
 
         // Tier 2: Professional - $100k volume
         rewardTiers[2] = RewardTier({
             minVolume: 100_000e18,
-            rewardMultiplier: 15000,      // 1.5x (150%) - 50% boost
-            tradingFeeDiscount: 1000,     // 10% discount
+            rewardMultiplier: 15000, // 1.5x (150%) - 50% boost
+            tradingFeeDiscount: 1000, // 10% discount
             name: "Pro"
         });
 
         // Tier 3: Elite - $1M volume
         rewardTiers[3] = RewardTier({
             minVolume: 1_000_000e18,
-            rewardMultiplier: 20000,      // 2x (200%) - 2x rewards
-            tradingFeeDiscount: 1500,     // 15% discount
+            rewardMultiplier: 20000, // 2x (200%) - 2x rewards
+            tradingFeeDiscount: 1500, // 15% discount
             name: "Elite"
         });
 
         // Tier 4: VIP - $10M volume
         rewardTiers[4] = RewardTier({
             minVolume: 10_000_000e18,
-            rewardMultiplier: 30000,      // 3x (300%) - 3x rewards
-            tradingFeeDiscount: 2000,     // 20% discount (maximum)
+            rewardMultiplier: 30000, // 3x (300%) - 3x rewards
+            tradingFeeDiscount: 2000, // 20% discount (maximum)
             name: "VIP"
         });
     }
@@ -628,11 +571,11 @@ contract IncentiveManager is SecurityBase {
     /// @dev Called once in constructor
     function _initializeReferralConfig() internal {
         referralConfig = ReferralReward({
-            referrerShare: 1000,          // 10% of base rewards to referrer
-            refereeBonus: 500,            // 5% bonus to referee (stacks with their own rewards)
-            minVolumeRequired: 1000e18,   // $1000 minimum epoch volume to qualify
-            cooldownPeriod: 1 days,       // 1 day cooldown between registrations by referrer
-            maxReferralsPerEpoch: 10      // Max 10 new referrals per referrer per epoch
+            referrerShare: 1000, // 10% of base rewards to referrer
+            refereeBonus: 500, // 5% bonus to referee (stacks with their own rewards)
+            minVolumeRequired: 1000e18, // $1000 minimum epoch volume to qualify
+            cooldownPeriod: 1 days, // 1 day cooldown between registrations by referrer
+            maxReferralsPerEpoch: 10 // Max 10 new referrals per referrer per epoch
         });
     }
 
@@ -640,14 +583,14 @@ contract IncentiveManager is SecurityBase {
     /// @dev Called automatically after finalizing previous epoch
     function _startNewEpoch() internal {
         currentEpochId++;
-        
+
         // Create new epoch with 30-day duration
         epochs[currentEpochId] = Epoch({
             startTime: block.timestamp,
             endTime: block.timestamp + EPOCH_DURATION,
-            totalRewardsPool: 0,           // Will be funded by admin
+            totalRewardsPool: 0, // Will be funded by admin
             totalVolumeTraded: 0,
-            claimedRewards: 0,             // Track rewards claimed from this pool
+            claimedRewards: 0, // Track rewards claimed from this pool
             finalized: false
         });
 
@@ -688,7 +631,7 @@ contract IncentiveManager is SecurityBase {
     /// @dev Requires 2-day delay before execution to allow community response
     function initiateRewardsPerVolumeChange(uint256 _rewardsPerVolumeUnit) external onlyAdmin {
         if (_rewardsPerVolumeUnit == 0) revert IncentiveManager__InvalidParameter();
-        
+
         pendingChangeTimestamp = block.timestamp;
         emit ParameterChangeInitiated(keccak256("rewardsPerVolumeUnit"), block.timestamp);
     }
@@ -741,22 +684,17 @@ contract IncentiveManager is SecurityBase {
     ///      Prevents new trades from accumulating in old epochs
     function finalizeEpoch() external onlyAdmin {
         Epoch storage epoch = epochs[currentEpochId];
-        
+
         // Ensure epoch hasn't already been finalized
         if (epoch.finalized) revert IncentiveManager__EpochAlreadyFinalized();
-        
+
         // Ensure sufficient time has passed
         if (block.timestamp < epoch.endTime) revert IncentiveManager__EpochNotEnded();
 
         // Mark epoch as finalized
         epoch.finalized = true;
 
-        emit EpochFinalized(
-            currentEpochId,
-            epoch.totalVolumeTraded,
-            epoch.totalRewardsPool,
-            epoch.claimedRewards
-        );
+        emit EpochFinalized(currentEpochId, epoch.totalVolumeTraded, epoch.totalRewardsPool, epoch.claimedRewards);
 
         // Start next epoch
         _startNewEpoch();
@@ -787,12 +725,7 @@ contract IncentiveManager is SecurityBase {
         referralConfig.maxReferralsPerEpoch = _maxReferralsPerEpoch;
 
         emit ReferralConfigUpdated(
-            _referrerShare,
-            _refereeBonus,
-            _minVolume,
-            _cooldownPeriod,
-            _maxReferralsPerEpoch,
-            block.timestamp
+            _referrerShare, _refereeBonus, _minVolume, _cooldownPeriod, _maxReferralsPerEpoch, block.timestamp
         );
     }
 
@@ -801,18 +734,16 @@ contract IncentiveManager is SecurityBase {
     /// @param minVolume New minimum rolling volume requirement
     /// @param rewardMultiplier New reward multiplier in basis points
     /// @param feeDiscount New trading fee discount in basis points
-    function updateTierConfig(
-        uint8 tier,
-        uint256 minVolume,
-        uint256 rewardMultiplier,
-        uint256 feeDiscount
-    ) external onlyAdmin {
+    function updateTierConfig(uint8 tier, uint256 minVolume, uint256 rewardMultiplier, uint256 feeDiscount)
+        external
+        onlyAdmin
+    {
         // Validate tier exists (0-4)
         if (tier > 4) revert IncentiveManager__InvalidParameter();
-        
+
         // Validate multiplier is within bounds
         if (rewardMultiplier > MAX_REWARD_MULTIPLIER) revert IncentiveManager__InvalidParameter();
-        
+
         // Validate fee discount is within bounds
         if (feeDiscount > MAX_FEE_DISCOUNT) revert IncentiveManager__InvalidParameter();
 
@@ -830,7 +761,7 @@ contract IncentiveManager is SecurityBase {
     function emergencyWithdrawRewards(uint256 amount) external onlyAdmin {
         // Ensure we don't withdraw more than earned/unclaimed rewards
         uint256 unclaimedRewards = baobabToken.balanceOf(address(this));
-        
+
         if (amount > unclaimedRewards) {
             amount = unclaimedRewards;
         }
@@ -882,11 +813,11 @@ contract IncentiveManager is SecurityBase {
     /// @return referrer The user's referrer address
     /// @return referralCount Total number of successful referrals made
     /// @return referralRewards Total rewards earned from referrals
-    function getReferralInfo(address user) external view returns (
-        address referrer,
-        uint256 referralCount,
-        uint256 referralRewards
-    ) {
+    function getReferralInfo(address user)
+        external
+        view
+        returns (address referrer, uint256 referralCount, uint256 referralRewards)
+    {
         UserStats memory stats = userStats[user];
         return (stats.referrer, stats.referralCount, stats.referralRewards);
     }
@@ -919,5 +850,4 @@ contract IncentiveManager is SecurityBase {
         Epoch storage epoch = epochs[currentEpochId];
         return epoch.totalRewardsPool - epoch.claimedRewards;
     }
-
 }

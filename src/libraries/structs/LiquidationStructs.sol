@@ -4,29 +4,28 @@ pragma solidity ^0.8.24;
 import {CommonStructs} from "./CommonStructs.sol";
 
 library LiquidationStructs {
-
-      /**
-       * @dev Daily volume bucket used in mapping(address => mapping(uint256 => VolumeBucket))
-       *      Bucket ID = timestamp normalized to midnight UTC
-       * @param volume USD notional traded that day (18 decimals)
-       * @param timestamp When bucket was last updated
-       */
-      struct VolumeBucket {
-            uint256 volume;     
-            uint256 timestamp;
-      }
-
-       /**
-     * @notice Liquidation event data
-      * @param volume30d User's rolling 30-day volume (18 decimals)
-      * @param lastUpdatedBucket Timestamp of last updated volume bucket
-      * @param tier User's current tier based on 30-day volume
+    /**
+     * @dev Daily volume bucket used in mapping(address => mapping(uint256 => VolumeBucket))
+     *      Bucket ID = timestamp normalized to midnight UTC
+     * @param volume USD notional traded that day (18 decimals)
+     * @param timestamp When bucket was last updated
      */
-      struct UserVolume {
-            uint256 volume30d;
-            uint256 lastUpdatedBucket;
-            uint8 tier; 
-      }
+    struct VolumeBucket {
+        uint256 volume;
+        uint256 timestamp;
+    }
+
+    /**
+     * @notice Liquidation event data
+     * @param volume30d User's rolling 30-day volume (18 decimals)
+     * @param lastUpdatedBucket Timestamp of last updated volume bucket
+     * @param tier User's current tier based on 30-day volume
+     */
+    struct UserVolume {
+        uint256 volume30d;
+        uint256 lastUpdatedBucket;
+        uint8 tier;
+    }
 
     /**
      * @notice Liquidation event data
@@ -79,7 +78,7 @@ library LiquidationStructs {
     }
 
     /**
-     * @notice 
+     * @notice
      * @dev Configuration for partial liquidations and ADL
      * @param maxLiquidationRatioBps Max % of position to liquidate per tx (basis points)
      * @param partialLiquidationCloseRatioBps % of position to close in partial liqs (basis points)
@@ -88,15 +87,15 @@ library LiquidationStructs {
      * @param adlEnabled Whether auto-deleveraging is enabled
      */
     struct LiquidationConfig {
-        uint256 maxLiquidationRatioBps;  // max % of position to liquidate per tx
+        uint256 maxLiquidationRatioBps; // max % of position to liquidate per tx
         uint256 partialLiquidationCloseRatioBps; // for partial liqs
-        uint256 insuranceFundFeeBps;     // % of collateral sent to insurance
-        uint256 liquidatorRewardBps;     // % of collateral paid to liquidator
-        bool adlEnabled;                 // auto-deleveraging enabled
+        uint256 insuranceFundFeeBps; // % of collateral sent to insurance
+        uint256 liquidatorRewardBps; // % of collateral paid to liquidator
+        bool adlEnabled; // auto-deleveraging enabled
     }
 
     /**
-     * @notice 
+     * @notice
      * @dev Insurance fund claim after catastrophic loss
      * @param claimId Unique identifier for the claim
      * @param claimant Address requesting the claim
@@ -107,7 +106,7 @@ library LiquidationStructs {
     struct InsuranceClaim {
         bytes32 claimId;
         address claimant;
-        uint256 amount;             
+        uint256 amount;
         uint256 timestamp;
         bool executed;
     }

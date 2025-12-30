@@ -69,17 +69,16 @@ interface ICircuitBreaker {
     function resetCircuit(bytes32 marketId, uint256 newReferencePrice) external;
     function toggleGlobalHalt() external;
 
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════════════════════
     //                                     ADMIN FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
-
+    // ════════════════════════════════════════════════════════════
     function updateConfig(uint16 _maxPriceDeviationBps, uint16 _maxVolumeSpikeBps, uint16 _maxLiquidationRateBps)
         external;
     function addGuardian(address guardian) external;
     function removeGuardian(address guardian) external;
     function toggleCircuitBreaker() external;
 
-    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    // ════════════════════════
     //                                      VIEW FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -89,5 +88,6 @@ interface ICircuitBreaker {
     function admin() external view returns (address);
     function globalHalt() external view returns (bool);
     function isCircuitTripped(bytes32 marketId) external view returns (bool);
+    function isAnyCircuitTripped() external view returns (bool);
     function getCircuitState(bytes32 marketId) external view returns (CircuitState memory);
 }
