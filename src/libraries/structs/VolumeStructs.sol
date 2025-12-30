@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
@@ -12,8 +11,8 @@ library VolumeStructs {
      *      Bucket ID = timestamp normalized to midnight UTC
      */
     struct VolumeBucket {
-        uint256 volume;     // USD notional traded that day (18 decimals)
-        uint256 timestamp;  // When bucket was last updated
+        uint256 volume; // USD notional traded that day (18 decimals)
+        uint256 timestamp; // When bucket was last updated
     }
 
     /**

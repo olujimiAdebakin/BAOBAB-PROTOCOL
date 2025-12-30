@@ -278,10 +278,7 @@ contract MarketRegistry is SecurityBase {
      * - This mapping provides the bridge between marketId and actual token address
      * - Must be set before positions can be opened in the market
      */
-    function setQuoteAsset(bytes32 marketId, address quoteAssetAddress)
-        external
-        onlyAdmin
-    {
+    function setQuoteAsset(bytes32 marketId, address quoteAssetAddress) external onlyAdmin {
         if (!marketExists[marketId]) revert MarketRegistry__MarketNotFound();
         quoteAssetAddress.validateContract();
 
@@ -294,10 +291,7 @@ contract MarketRegistry is SecurityBase {
      * @param marketId Market identifier
      * @param baseAssetAddress Token address of the base asset
      */
-    function setBaseAsset(bytes32 marketId, address baseAssetAddress)
-        external
-        onlyAdmin
-    {
+    function setBaseAsset(bytes32 marketId, address baseAssetAddress) external onlyAdmin {
         if (!marketExists[marketId]) revert MarketRegistry__MarketNotFound();
         baseAssetAddress.validateContract();
 
@@ -347,11 +341,7 @@ contract MarketRegistry is SecurityBase {
         riskParameters[marketId].tradingFeeBps = newTradingFeeBps;
 
         emit RiskParametersUpdated(
-            marketId,
-            newMaxLeverage,
-            newMaintenanceMarginBps,
-            newLiquidationFeeBps,
-            newTradingFeeBps
+            marketId, newMaxLeverage, newMaintenanceMarginBps, newLiquidationFeeBps, newTradingFeeBps
         );
     }
 
@@ -366,10 +356,7 @@ contract MarketRegistry is SecurityBase {
      * - Market must exist
      * - New adapter must be valid contract
      */
-    function updateOracleAdapter(bytes32 marketId, address newOracleAdapter)
-        external
-        onlyAdmin
-    {
+    function updateOracleAdapter(bytes32 marketId, address newOracleAdapter) external onlyAdmin {
         if (!marketExists[marketId]) revert MarketRegistry__MarketNotFound();
         newOracleAdapter.validateContract();
 
@@ -418,11 +405,7 @@ contract MarketRegistry is SecurityBase {
      * @param marketId Market identifier
      * @return Market struct with all metadata
      */
-    function getMarket(bytes32 marketId)
-        external
-        view
-        returns (CommonStructs.Market memory)
-    {
+    function getMarket(bytes32 marketId) external view returns (CommonStructs.Market memory) {
         if (!marketExists[marketId]) revert MarketRegistry__MarketNotFound();
         return markets[marketId];
     }
@@ -432,11 +415,7 @@ contract MarketRegistry is SecurityBase {
      * @param marketId Market identifier
      * @return Risk parameters struct
      */
-    function getRiskParameters(bytes32 marketId)
-        external
-        view
-        returns (CommonStructs.RiskParameters memory)
-    {
+    function getRiskParameters(bytes32 marketId) external view returns (CommonStructs.RiskParameters memory) {
         if (!marketExists[marketId]) revert MarketRegistry__MarketNotFound();
         return riskParameters[marketId];
     }
@@ -488,8 +467,7 @@ contract MarketRegistry is SecurityBase {
      * @return True if market exists and is in ACTIVE status
      */
     function isMarketActive(bytes32 marketId) external view returns (bool) {
-        return marketExists[marketId]
-            && markets[marketId].status == CommonStructs.MarketStatus.ACTIVE;
+        return marketExists[marketId] && markets[marketId].status == CommonStructs.MarketStatus.ACTIVE;
     }
 
     /**

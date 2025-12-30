@@ -24,9 +24,8 @@ import {SecurityBase} from "../security/SecurityBase.sol";
  * - Role-based access control
  */
 contract VolumeTracker is SecurityBase {
-
-     using CommonStructs for  *;
-     using VolumeStructs for *;
+    using CommonStructs for *;
+    using VolumeStructs for *;
     // ════════════════════════════════════════════════════════════════════════════
     //                                          STRUCTURES
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -149,11 +148,7 @@ contract VolumeTracker is SecurityBase {
      * @param marketId Market where trade occurred
      * @param amount Trade size in quote asset (18 decimals)
      */
-    function recordTrade(address user, bytes32 marketId, uint256 amount)
-        external
-        onlyAuthorized
-        whenNotPaused
-    {
+    function recordTrade(address user, bytes32 marketId, uint256 amount) external onlyAuthorized whenNotPaused {
         if (user == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
         if (marketId == bytes32(0)) revert InvalidMarketId();

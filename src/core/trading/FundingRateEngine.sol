@@ -19,9 +19,6 @@ interface IAccessManager {
     function hasRole(bytes32 role, address account) external view returns (bool);
 }
 
-
-
-
 /**
  * @title FundingEngine
  * @notice Calculates and applies periodic funding rates to open positions based on Open Interest (OI) imbalance.
@@ -85,13 +82,12 @@ contract FundingEngine is SecurityBase {
     error MarketNotFound();
 
     struct FundingState {
-    uint256 lastUpdateTime;
-    int256 fundingRateBps;
-    int256 cumulativeFunding;  // AFPU in basis points × time
-    uint256 totalLongOI;
-    uint256 totalShortOI;
-}
-
+        uint256 lastUpdateTime;
+        int256 fundingRateBps;
+        int256 cumulativeFunding; // AFPU in basis points × time
+        uint256 totalLongOI;
+        uint256 totalShortOI;
+    }
 
     /**
      * @notice Initializes the FundingEngine with addresses for PositionManager and AccessManager.
@@ -99,7 +95,6 @@ contract FundingEngine is SecurityBase {
      * @param _accessManager The address of the AccessManager contract.
      */
     constructor(address _positionManager, address _accessManager, address _rateLimiter) {
-
         _positionManager.validateContract();
         _accessManager.validateContract();
         _rateLimiter.validateContract();
@@ -117,94 +112,86 @@ contract FundingEngine is SecurityBase {
         _;
     }
 
+    /**
+     * @notice Updates the market's global funding index (AFPU) based on Open Interest (OI) skew.
+     *
+     * @dev This is the keeper-triggered function for the **Pull Model**.
+     * 1. It calculates the instantaneous funding rate (\`rateBps\`).
+     * 2. It calculates the funding change (\`deltaFunding\`) over the elapsed time.
+     * 3. It performs a single, gas-efficient $O(1)$ write to update the \`cumulativeFunding\` index.
+     * The unscalable, $O(N)$ loop over positions is eliminated.
+     * 4. Funding is settled lazily (pulled) by users on position interaction via the PositionManager.
+     *
+     * @param marketId The market ID.
+     * @return rateBps The calculated funding rate in basis points (BPS) for the period.
+     */
+    function applyFundingRate(bytes32 marketId) external nonReentrant onlyKeeper returns (int256 rateBps) {
+        rateLimiter.checkRateLimit(msg.sender, RateLimitBuckets.APPLY_FUNDING);
 
-  /**
- * @notice Updates the market's global funding index (AFPU) based on Open Interest (OI) skew.
- *
- * @dev This is the keeper-triggered function for the **Pull Model**. 
- * 1. It calculates the instantaneous funding rate (\`rateBps\`).
- * 2. It calculates the funding change (\`deltaFunding\`) over the elapsed time.
- * 3. It performs a single, gas-efficient $O(1)$ write to update the \`cumulativeFunding\` index. 
- * The unscalable, $O(N)$ loop over positions is eliminated.
- * 4. Funding is settled lazily (pulled) by users on position interaction via the PositionManager.
- *
- * @param marketId The market ID.
- * @return rateBps The calculated funding rate in basis points (BPS) for the period.
- */
-function applyFundingRate(bytes32 marketId) 
-    external 
-    nonReentrant 
-    onlyKeeper 
-    returns (int256 rateBps) 
-{
-    rateLimiter.checkRateLimit(msg.sender, RateLimitBuckets.APPLY_FUNDING);
-    
-    //  Fetch Config & State
-    (
-        , , // maxLev, mmr (not needed)
-        uint16 maxFund,
-        bool fundEnabled,
-        uint256 fundingInterval // Market-specific funding period
-    ) = positionManager.marketConfig(marketId);
+        //  Fetch Config & State
+        (
+            ,
+            , // maxLev, mmr (not needed)
+            uint16 maxFund,
+            bool fundEnabled,
+            uint256 fundingInterval // Market-specific funding period
+        ) = positionManager.marketConfig(marketId);
 
-    // Get the storage pointer to the market's AFPU data structure.
-    FundingState storage fs = fundingState[marketId];
+        // Get the storage pointer to the market's AFPU data structure.
+        FundingState storage fs = fundingState[marketId];
 
-    // Initial Safety Checks
-    if (!fundEnabled || fundingInterval == 0) {
-        // If funding is disabled, update the time anchor and exit.
+        // Initial Safety Checks
+        if (!fundEnabled || fundingInterval == 0) {
+            // If funding is disabled, update the time anchor and exit.
+            fs.lastUpdateTime = block.timestamp;
+            return 0;
+        }
+
+        //  Time Lock Enforcement
+        uint256 elapsed = block.timestamp - fs.lastUpdateTime;
+
+        // Use the market's configured interval to check if enough time has passed.
+        if (elapsed < fundingInterval) {
+            revert FundingTooSoon();
+        }
+
+        //  Check Open Interest (OI)
+        uint256 longOI = positionManager.openInterest(marketId, CommonStructs.Side.LONG);
+        uint256 shortOI = positionManager.openInterest(marketId, CommonStructs.Side.SHORT);
+        uint256 totalOI = longOI + shortOI;
+
+        if (totalOI == 0) {
+            // No open interest means no rate, but consume the time period.
+            fs.lastUpdateTime = block.timestamp;
+            return 0;
+        }
+
+        // Calculate Rate and AFPU Update
+
+        // Calculate the periodic rate based on current OI skew and the market's max cap.
+        rateBps = _calculateRate(longOI, shortOI, totalOI, maxFund);
+
+        // Calculate the change in the AFPU index based on the rate and elapsed time.
+        // Delta = (rateBps * elapsed * PRECISION) / (fundingInterval * BASIS_POINTS)
+        int256 deltaFunding =
+            (int256(rateBps) * int256(elapsed) * int256(PRECISION)) / int256(fundingInterval * BASIS_POINTS);
+
+        // Update the core AFPU index (O(1) storage write).
+        fs.cumulativeFunding += deltaFunding;
+
+        // Store latest metrics in the struct (for off-chain readers/monitoring)
+        fs.fundingRateBps = rateBps;
+        fs.totalLongOI = longOI;
+        fs.totalShortOI = shortOI;
+
+        //  Finalize Cycle
+        // Update the time anchor to block.timestamp for the next cycle's clock.
         fs.lastUpdateTime = block.timestamp;
-        return 0;
+
+        emit FundingApplied(marketId, rateBps, longOI, shortOI);
+
+        return rateBps;
     }
-    
-    //  Time Lock Enforcement
-    uint256 elapsed = block.timestamp - fs.lastUpdateTime;
-    
-    // Use the market's configured interval to check if enough time has passed.
-    if (elapsed < fundingInterval) {
-        revert FundingTooSoon();
-    }
-
-    //  Check Open Interest (OI)
-    uint256 longOI = positionManager.openInterest(marketId, CommonStructs.Side.LONG);
-    uint256 shortOI = positionManager.openInterest(marketId, CommonStructs.Side.SHORT);
-    uint256 totalOI = longOI + shortOI;
-
-    if (totalOI == 0) {
-        // No open interest means no rate, but consume the time period.
-        fs.lastUpdateTime = block.timestamp;
-        return 0;
-    }
-
-    // Calculate Rate and AFPU Update
-    
-    // Calculate the periodic rate based on current OI skew and the market's max cap.
-    rateBps = _calculateRate(longOI, shortOI, totalOI, maxFund);
-
-    // Calculate the change in the AFPU index based on the rate and elapsed time.
-    // Delta = (rateBps * elapsed * PRECISION) / (fundingInterval * BASIS_POINTS)
-    int256 deltaFunding = (
-        int256(rateBps)
-        * int256(elapsed) 
-        * int256(PRECISION)
-    ) / int256(fundingInterval * BASIS_POINTS);
-    
-    // Update the core AFPU index (O(1) storage write). 
-    fs.cumulativeFunding += deltaFunding;
-    
-    // Store latest metrics in the struct (for off-chain readers/monitoring)
-    fs.fundingRateBps = rateBps;
-    fs.totalLongOI = longOI;
-    fs.totalShortOI = shortOI;
-    
-    //  Finalize Cycle
-    // Update the time anchor to block.timestamp for the next cycle's clock.
-    fs.lastUpdateTime = block.timestamp; 
-
-    emit FundingApplied(marketId, rateBps, longOI, shortOI);
-
-    return rateBps;
-}
 
     /**
      * @notice Calculates the periodic funding rate based on open interest imbalance, capped by maxRateBps.
@@ -306,9 +293,9 @@ function applyFundingRate(bytes32 marketId)
     /// @return fundingRateBps The current funding rate in basis points
     /// @return cumulativeFunding The cumulative funding value
     function readFundingState(bytes32 marketId) external view returns (uint256, int256, int256) {
-    FundingState storage fs = fundingState[marketId];
-    return (fs.lastUpdateTime, fs.fundingRateBps, fs.cumulativeFunding);
-}
+        FundingState storage fs = fundingState[marketId];
+        return (fs.lastUpdateTime, fs.fundingRateBps, fs.cumulativeFunding);
+    }
 
     /**
      * @notice Calculates the current funding rate for a given market based on open interest skew.
@@ -341,10 +328,10 @@ function applyFundingRate(bytes32 marketId)
     /// @notice Gets the cumulative funding for a market
     /// @param marketId The market identifier
     /// @return The cumulative funding value
-        function getCumulativeFunding(bytes32 marketId) external view returns (int256) {
+    function getCumulativeFunding(bytes32 marketId) external view returns (int256) {
         return fundingState[marketId].cumulativeFunding;
     }
-    
+
     /// @notice Gets the entire funding state for a market
     /// @param marketId The market identifier
     /// @return The complete FundingState struct

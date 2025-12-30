@@ -11,9 +11,9 @@ library BaobabMath {
     using SafeCast for uint256;
     using SafeCast for int256;
 
-    uint256 internal constant BPS = 10_000;          // 100%
-    uint256 internal constant MAX_FEE_BPS = 500;     // 5%
-    uint256 internal constant MAX_LEVERAGE = 100;    // 100x leverage max
+    uint256 internal constant BPS = 10_000; // 100%
+    uint256 internal constant MAX_FEE_BPS = 500; // 5%
+    uint256 internal constant MAX_LEVERAGE = 100; // 100x leverage max
     uint256 internal constant FUNDING_PRECISION = 1e18; // Precision scale for funding rate
 
     // ==== SafeCast helpers ====
@@ -68,12 +68,13 @@ library BaobabMath {
     }
 
     // Add to BaobabMath.sol:
-function applyVolatilityMultiplier(
-    uint256 feeBps, 
-    uint256 volatilityMultiplierBps
-) internal pure returns (uint256) {
-    return applyMultiplier(feeBps, volatilityMultiplierBps);
-}
+    function applyVolatilityMultiplier(uint256 feeBps, uint256 volatilityMultiplierBps)
+        internal
+        pure
+        returns (uint256)
+    {
+        return applyMultiplier(feeBps, volatilityMultiplierBps);
+    }
 
     // ==== Fee & Rebate calculations ====
 
@@ -102,11 +103,11 @@ function applyVolatilityMultiplier(
      * @param timeElapsed Seconds elapsed since last funding
      * @return fundingRate Signed funding rate scaled by FUNDING_PRECISION
      */
-    function calculateFundingRate(
-        uint256 longOi,
-        uint256 shortOi,
-        uint256 timeElapsed
-    ) internal pure returns (int256 fundingRate) {
+    function calculateFundingRate(uint256 longOi, uint256 shortOi, uint256 timeElapsed)
+        internal
+        pure
+        returns (int256 fundingRate)
+    {
         uint256 totalOi = longOi + shortOi;
         if (totalOi == 0) return 0;
 
@@ -151,7 +152,8 @@ function applyVolatilityMultiplier(
             liquidationPrice = priceMove >= entryPrice ? 1 : entryPrice - priceMove;
         } else {
             liquidationPrice = entryPrice + priceMove;
-            if (liquidationPrice < entryPrice) { // overflow protection
+            if (liquidationPrice < entryPrice) {
+                // overflow protection
                 liquidationPrice = type(uint256).max - 1;
             }
         }
@@ -181,11 +183,11 @@ function applyVolatilityMultiplier(
      * @param notional Position notional value
      * @return Margin ratio in BPS
      */
-    function calculateMarginRatio(
-        uint256 collateral,
-        int256 unrealizedPnL,
-        uint256 notional
-    ) internal pure returns (uint256) {
+    function calculateMarginRatio(uint256 collateral, int256 unrealizedPnL, uint256 notional)
+        internal
+        pure
+        returns (uint256)
+    {
         if (notional == 0) return type(uint256).max;
 
         int256 netValue = toInt256(collateral) + unrealizedPnL;

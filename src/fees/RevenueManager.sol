@@ -9,44 +9,43 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @dev Records fees, provides analytics, manages revenue allocation
  */
 contract RevenueManager {
-
     // ═══════════════════════════════════════════════════════════════════════════════════
     //                                       STRUCTS
     // ═══════════════════════════════════════════════════════════════════════════════════
 
     struct RevenueSource {
-        uint256 tradingFees;            // Opening + closing fees
-        uint256 liquidationFees;        // Liquidation penalties
-        uint256 executionFees;          // TWAP/Scale order fees
-        uint256 vaultDepositFees;       // LP deposit fees
-        uint256 vaultWithdrawFees;      // LP withdrawal fees
-        uint256 vaultPerformanceFees;   // Performance fees
-        uint256 spreadRevenue;          // AMM spread captured
-        uint256 otherRevenue;           // Misc revenue
+        uint256 tradingFees; // Opening + closing fees
+        uint256 liquidationFees; // Liquidation penalties
+        uint256 executionFees; // TWAP/Scale order fees
+        uint256 vaultDepositFees; // LP deposit fees
+        uint256 vaultWithdrawFees; // LP withdrawal fees
+        uint256 vaultPerformanceFees; // Performance fees
+        uint256 spreadRevenue; // AMM spread captured
+        uint256 otherRevenue; // Misc revenue
     }
 
     struct MarketRevenue {
         bytes32 marketId;
-        uint256 totalVolume;            // Trading volume
-        uint256 totalFees;              // All fees from market
-        uint256 openInterest;           // Current OI
-        uint256 numberOfTrades;         // Trade count
+        uint256 totalVolume; // Trading volume
+        uint256 totalFees; // All fees from market
+        uint256 openInterest; // Current OI
+        uint256 numberOfTrades; // Trade count
     }
 
     struct DailySnapshot {
-        uint256 date;                   // Timestamp (start of day)
+        uint256 date; // Timestamp (start of day)
         RevenueSource revenue;
-        uint256 totalRevenue;           // Sum of all sources
-        uint256 totalVolume;            // Total trading volume
-        uint256 uniqueTraders;          // Unique users
-        uint256 totalTrades;            // Total trades
+        uint256 totalRevenue; // Sum of all sources
+        uint256 totalVolume; // Total trading volume
+        uint256 uniqueTraders; // Unique users
+        uint256 totalTrades; // Total trades
     }
 
     struct Allocation {
-        uint256 stakersShare;           // % to stakers (basis points)
-        uint256 lpShare;                // % to LPs
-        uint256 treasuryShare;          // % to treasury
-        uint256 insuranceShare;         // % to insurance
+        uint256 stakersShare; // % to stakers (basis points)
+        uint256 lpShare; // % to LPs
+        uint256 treasuryShare; // % to treasury
+        uint256 insuranceShare; // % to insurance
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════
@@ -83,31 +82,13 @@ contract RevenueManager {
     //                                         EVENTS
     // ═══════════════════════════════════════════════════════════════════════════════════
 
-    event RevenueRecorded(
-        uint256 indexed day,
-        uint8 indexed sourceType,
-        uint256 amount,
-        bytes32 marketId
-    );
+    event RevenueRecorded(uint256 indexed day, uint8 indexed sourceType, uint256 amount, bytes32 marketId);
 
-    event DailySnapshotCreated(
-        uint256 indexed day,
-        uint256 totalRevenue,
-        uint256 totalVolume
-    );
+    event DailySnapshotCreated(uint256 indexed day, uint256 totalRevenue, uint256 totalVolume);
 
-    event AllocationUpdated(
-        uint256 stakersShare,
-        uint256 lpShare,
-        uint256 treasuryShare,
-        uint256 insuranceShare
-    );
+    event AllocationUpdated(uint256 stakersShare, uint256 lpShare, uint256 treasuryShare, uint256 insuranceShare);
 
-    event MarketRevenueUpdated(
-        bytes32 indexed marketId,
-        uint256 volume,
-        uint256 fees
-    );
+    event MarketRevenueUpdated(bytes32 indexed marketId, uint256 volume, uint256 fees);
 
     // ═══════════════════════════════════════════════════════════════════════════════════
     //                                         ERRORS
@@ -127,10 +108,10 @@ contract RevenueManager {
 
         // Initialize default allocation: 40/30/20/10
         revenueAllocation = Allocation({
-            stakersShare: 4000,     // 40%
-            lpShare: 3000,          // 30%
-            treasuryShare: 2000,    // 20%
-            insuranceShare: 1000    // 10%
+            stakersShare: 4000, // 40%
+            lpShare: 3000, // 30%
+            treasuryShare: 2000, // 20%
+            insuranceShare: 1000 // 10%
         });
 
         currentDay = block.timestamp / SECONDS_PER_DAY;
@@ -146,9 +127,7 @@ contract RevenueManager {
     }
 
     modifier onlyAuthorized() {
-        if (msg.sender != feeDistributor && 
-            msg.sender != positionManager && 
-            msg.sender != admin) {
+        if (msg.sender != feeDistributor && msg.sender != positionManager && msg.sender != admin) {
             revert RevenueManager__OnlyAuthorized();
         }
         _;
@@ -163,10 +142,7 @@ contract RevenueManager {
      * @param amount Fee amount
      * @param marketId Market where fee was generated
      */
-    function recordTradingFee(uint256 amount, bytes32 marketId) 
-        external 
-        onlyAuthorized 
-    {
+    function recordTradingFee(uint256 amount, bytes32 marketId) external onlyAuthorized {
         _checkAndUpdateDay();
 
         lifetimeRevenue.tradingFees += amount;
@@ -186,10 +162,7 @@ contract RevenueManager {
      * @param amount Fee amount
      * @param marketId Market where liquidation occurred
      */
-    function recordLiquidationFee(uint256 amount, bytes32 marketId) 
-        external 
-        onlyAuthorized 
-    {
+    function recordLiquidationFee(uint256 amount, bytes32 marketId) external onlyAuthorized {
         _checkAndUpdateDay();
 
         lifetimeRevenue.liquidationFees += amount;
@@ -208,10 +181,7 @@ contract RevenueManager {
      * @notice Record execution fee revenue
      * @param amount Fee amount
      */
-    function recordExecutionFee(uint256 amount) 
-        external 
-        onlyAuthorized 
-    {
+    function recordExecutionFee(uint256 amount) external onlyAuthorized {
         _checkAndUpdateDay();
 
         lifetimeRevenue.executionFees += amount;
@@ -228,10 +198,7 @@ contract RevenueManager {
      * @notice Record vault deposit fee
      * @param amount Fee amount
      */
-    function recordVaultDepositFee(uint256 amount) 
-        external 
-        onlyAuthorized 
-    {
+    function recordVaultDepositFee(uint256 amount) external onlyAuthorized {
         _checkAndUpdateDay();
 
         lifetimeRevenue.vaultDepositFees += amount;
@@ -248,10 +215,7 @@ contract RevenueManager {
      * @notice Record vault withdrawal fee
      * @param amount Fee amount
      */
-    function recordVaultWithdrawFee(uint256 amount) 
-        external 
-        onlyAuthorized 
-    {
+    function recordVaultWithdrawFee(uint256 amount) external onlyAuthorized {
         _checkAndUpdateDay();
 
         lifetimeRevenue.vaultWithdrawFees += amount;
@@ -268,10 +232,7 @@ contract RevenueManager {
      * @notice Record vault performance fee
      * @param amount Fee amount
      */
-    function recordVaultPerformanceFee(uint256 amount) 
-        external 
-        onlyAuthorized 
-    {
+    function recordVaultPerformanceFee(uint256 amount) external onlyAuthorized {
         _checkAndUpdateDay();
 
         lifetimeRevenue.vaultPerformanceFees += amount;
@@ -289,10 +250,7 @@ contract RevenueManager {
      * @param amount Spread captured
      * @param marketId Market where spread occurred
      */
-    function recordSpreadRevenue(uint256 amount, bytes32 marketId) 
-        external 
-        onlyAuthorized 
-    {
+    function recordSpreadRevenue(uint256 amount, bytes32 marketId) external onlyAuthorized {
         _checkAndUpdateDay();
 
         lifetimeRevenue.spreadRevenue += amount;
@@ -312,10 +270,7 @@ contract RevenueManager {
      * @param volume Trade volume
      * @param marketId Market where trade occurred
      */
-    function recordVolume(uint256 volume, bytes32 marketId) 
-        external 
-        onlyAuthorized 
-    {
+    function recordVolume(uint256 volume, bytes32 marketId) external onlyAuthorized {
         _checkAndUpdateDay();
 
         totalVolumeAllTime += volume;
@@ -333,30 +288,24 @@ contract RevenueManager {
 
     function _checkAndUpdateDay() internal {
         uint256 today = block.timestamp / SECONDS_PER_DAY;
-        
+
         if (today > currentDay) {
             // Finalize previous day
             emit DailySnapshotCreated(
-                currentDay,
-                dailySnapshots[currentDay].totalRevenue,
-                dailySnapshots[currentDay].totalVolume
+                currentDay, dailySnapshots[currentDay].totalRevenue, dailySnapshots[currentDay].totalVolume
             );
-            
+
             // Start new day
             currentDay = today;
             dailySnapshots[currentDay].date = block.timestamp;
         }
     }
 
-    function _updateMarketRevenue(
-        bytes32 marketId,
-        uint256 volume,
-        uint256 fees
-    ) internal {
+    function _updateMarketRevenue(bytes32 marketId, uint256 volume, uint256 fees) internal {
         if (marketId == bytes32(0)) return;
 
         MarketRevenue storage market = marketRevenue[marketId];
-        
+
         // Initialize if new market
         if (market.marketId == bytes32(0)) {
             market.marketId = marketId;
@@ -400,12 +349,7 @@ contract RevenueManager {
         revenueAllocation.treasuryShare = _treasuryShare;
         revenueAllocation.insuranceShare = _insuranceShare;
 
-        emit AllocationUpdated(
-            _stakersShare,
-            _lpShare,
-            _treasuryShare,
-            _insuranceShare
-        );
+        emit AllocationUpdated(_stakersShare, _lpShare, _treasuryShare, _insuranceShare);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════
@@ -444,11 +388,7 @@ contract RevenueManager {
         return totalVolumeAllTime;
     }
 
-    function getRevenueBySource(uint256 day, uint8 sourceType) 
-        external 
-        view 
-        returns (uint256) 
-    {
+    function getRevenueBySource(uint256 day, uint8 sourceType) external view returns (uint256) {
         return revenueBySource[day][sourceType];
     }
 
@@ -457,11 +397,7 @@ contract RevenueManager {
      * @param totalRevenue Total revenue to split
      * @param shareType 0=stakers, 1=LPs, 2=treasury, 3=insurance
      */
-    function calculateShare(uint256 totalRevenue, uint8 shareType) 
-        external 
-        view 
-        returns (uint256) 
-    {
+    function calculateShare(uint256 totalRevenue, uint8 shareType) external view returns (uint256) {
         if (shareType == 0) {
             return (totalRevenue * revenueAllocation.stakersShare) / BASIS_POINTS;
         } else if (shareType == 1) {
@@ -477,37 +413,29 @@ contract RevenueManager {
     /**
      * @notice Get revenue breakdown for last N days
      */
-    function getRevenueBreakdown(uint256 numDays) 
-        external 
-        view 
-        returns (
-            uint256 totalRevenue,
-            uint256 totalVolume,
-            uint256 avgDailyRevenue
-        ) 
+    function getRevenueBreakdown(uint256 numDays)
+        external
+        view
+        returns (uint256 totalRevenue, uint256 totalVolume, uint256 avgDailyRevenue)
     {
         uint256 startDay = currentDay > numDays ? currentDay - numDays : 0;
-        
+
         for (uint256 i = startDay; i <= currentDay; i++) {
             totalRevenue += dailySnapshots[i].totalRevenue;
             totalVolume += dailySnapshots[i].totalVolume;
         }
-        
+
         avgDailyRevenue = numDays > 0 ? totalRevenue / numDays : 0;
     }
 
     /**
      * @notice Get top revenue markets
      */
-    function getTopMarkets(uint256 limit) 
-        external 
-        view 
-        returns (bytes32[] memory markets, uint256[] memory revenues) 
-    {
+    function getTopMarkets(uint256 limit) external view returns (bytes32[] memory markets, uint256[] memory revenues) {
         uint256 count = activeMarkets.length < limit ? activeMarkets.length : limit;
         markets = new bytes32[](count);
         revenues = new uint256[](count);
-        
+
         // Simple selection (in production, sort by revenue)
         for (uint256 i = 0; i < count; i++) {
             markets[i] = activeMarkets[i];

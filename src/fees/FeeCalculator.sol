@@ -104,8 +104,6 @@ contract FeeCalculator is AccessManager {
         _;
     }
 
-
-
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
     /*                                        CONSTRUCTOR                                             */
     /*══════════════════════════════════════════════════════════════════════════════════════════════════*/
@@ -117,14 +115,14 @@ contract FeeCalculator is AccessManager {
      * @param _owner Owner address for AccessManager
      * @param _volumeTracker Address of VolumeTracker contract for user volume data
      */
-    constructor(address _baobabToken, address _volumeTracker, address admin, address _owner)  AccessManager(_owner) {
+    constructor(address _baobabToken, address _volumeTracker, address admin, address _owner) AccessManager(_owner) {
         if (_baobabToken == address(0) || admin == address(0)) {
             revert InvalidFeeConfiguration();
         }
 
         baobabToken = IERC20(_baobabToken);
         volumeTracker = IVolumeTracker(_volumeTracker);
-        
+
         // Setup role hierarchy
         _grantRole(ADMIN_ROLE, admin);
         _grantRole(FEE_MANAGER_ROLE, admin);
@@ -136,39 +134,34 @@ contract FeeCalculator is AccessManager {
 
     /**
      * @notice Initialize user tier configurations
-     * 
+     *
      */
     function _initializeTiers() internal {
         // Tier 0: Retail (default)
-        tiers[0] = CommonStructs.UserTier({
-            minVolume30d: 0,
-            minStake: 0,
-            discountBps: 0,
-            makerRebateBps: 0
-        });
+        tiers[0] = CommonStructs.UserTier({minVolume30d: 0, minStake: 0, discountBps: 0, makerRebateBps: 0});
 
         // Tier 1: Active Trader
         tiers[1] = CommonStructs.UserTier({
-            minVolume30d: 100_000e6,  // $100k volume
-            minStake: 1_000e18,       // 1,000 BAOBAB
-            discountBps: 1500,        // 15% discount
-            makerRebateBps: 0         // No rebate
+            minVolume30d: 100_000e6, // $100k volume
+            minStake: 1_000e18, // 1,000 BAOBAB
+            discountBps: 1500, // 15% discount
+            makerRebateBps: 0 // No rebate
         });
 
         // Tier 2: Professional Trader
         tiers[2] = CommonStructs.UserTier({
             minVolume30d: 1_000_000e6, // $1M volume
-            minStake: 10_000e18,       // 10,000 BAOBAB
-            discountBps: 3000,         // 30% discount
-            makerRebateBps: -10        // 0.1% rebate
+            minStake: 10_000e18, // 10,000 BAOBAB
+            discountBps: 3000, // 30% discount
+            makerRebateBps: -10 // 0.1% rebate
         });
 
         // Tier 3: VIP/Institutional
         tiers[3] = CommonStructs.UserTier({
             minVolume30d: 5_000_000e6, // $5M volume
-            minStake: 50_000e18,       // 50,000 BAOBAB
-            discountBps: 5000,         // 50% discount
-            makerRebateBps: -25        // 0.25% rebate
+            minStake: 50_000e18, // 50,000 BAOBAB
+            discountBps: 5000, // 50% discount
+            makerRebateBps: -25 // 0.25% rebate
         });
     }
 
@@ -178,25 +171,25 @@ contract FeeCalculator is AccessManager {
     function _initializeDefaultFees() internal {
         // Crypto: Low volatility, high liquidity
         defaultFeeByClass[CommonStructs.AssetClass.CRYPTO] = CommonStructs.FeeConfig({
-            takerFeeBps: 8,   // 0.08%
-            makerRebateBps: 0    // 0% (can be negative for rebates)
+            takerFeeBps: 8, // 0.08%
+            makerRebateBps: 0 // 0% (can be negative for rebates)
         });
 
         // Forex: Medium volatility
         defaultFeeByClass[CommonStructs.AssetClass.FOREX] = CommonStructs.FeeConfig({
-            takerFeeBps: 18,  // 0.18%
+            takerFeeBps: 18, // 0.18%
             makerRebateBps: 0
         });
 
         // Stocks: Higher volatility, regulatory costs
         defaultFeeByClass[CommonStructs.AssetClass.STOCK] = CommonStructs.FeeConfig({
-            takerFeeBps: 25,  // 0.25%
+            takerFeeBps: 25, // 0.25%
             makerRebateBps: 0
         });
 
         // Commodities: Medium volatility
         defaultFeeByClass[CommonStructs.AssetClass.COMMODITY] = CommonStructs.FeeConfig({
-            takerFeeBps: 15,  // 0.15%
+            takerFeeBps: 15, // 0.15%
             makerRebateBps: 0
         });
     }
@@ -212,31 +205,29 @@ contract FeeCalculator is AccessManager {
      * @param notionalUsd Notional value in USD for volume calculation
      * @return feeBps Final taker fee in basis points
      */
-    function calculateTradingFeeTaker(
-        address asset,
-        address user,
-        uint256 notionalUsd
-    ) external view returns (uint256 feeBps) {
+    function calculateTradingFeeTaker(address asset, address user, uint256 notionalUsd)
+        external
+        view
+        returns (uint256 feeBps)
+    {
         if (address(volumeTracker) == address(0)) revert VolumeTrackerNotSet();
 
         CommonStructs.FeeConfig memory config = _getFeeConfig(asset);
-        
+
         // Apply volatility multiplier to base fee
         uint256 baseFee = config.takerFeeBps.applyMultiplier(volatilityMultiplierBps);
-        
+
         // Apply tier-based discount
         CommonStructs.UserTier memory userTier = _getUserTierStruct(user, notionalUsd);
         uint256 discount = userTier.discountBps;
         feeBps = baseFee.calculateFeeWithDiscount(discount);
-        
+
         // Apply emergency fee caps if active
         if (emergencyMode) {
-            uint256 emergencyCap = emergencyFeeCaps[asset] != 0 
-                ? emergencyFeeCaps[asset] 
-                : emergencyTakerCapBps;
+            uint256 emergencyCap = emergencyFeeCaps[asset] != 0 ? emergencyFeeCaps[asset] : emergencyTakerCapBps;
             feeBps = feeBps > emergencyCap ? emergencyCap : feeBps;
         }
-        
+
         // Final safety check
         return feeBps > BaobabMath.MAX_FEE_BPS ? BaobabMath.MAX_FEE_BPS : feeBps;
     }
@@ -256,7 +247,7 @@ contract FeeCalculator is AccessManager {
 
         CommonStructs.UserTier memory userTier = _getUserTierStruct(user, notionalUsd);
         // Will have Negative values indicate rebates
-        return userTier.makerRebateBps; 
+        return userTier.makerRebateBps;
     }
 
     /**
@@ -266,21 +257,21 @@ contract FeeCalculator is AccessManager {
      * @param isOpening Whether this is an opening fee (true) or closing fee (false)
      * @return feeBps Position fee in basis points
      */
-    function calculatePositionFee(
-        address user,
-        uint256 notionalUsd,
-        bool isOpening
-    ) external view returns (uint256 feeBps) {
+    function calculatePositionFee(address user, uint256 notionalUsd, bool isOpening)
+        external
+        view
+        returns (uint256 feeBps)
+    {
         if (address(volumeTracker) == address(0)) revert VolumeTrackerNotSet();
 
         // Position fees are typically lower than trading fees
         uint256 baseFee = isOpening ? 5 : 3; // 0.05% open, 0.03% close
-        
+
         // Apply tier discount
         CommonStructs.UserTier memory userTier = _getUserTierStruct(user, notionalUsd);
         uint256 discount = userTier.discountBps;
         feeBps = baseFee.calculateFeeWithDiscount(discount);
-        
+
         // Cap position fees at 0.5%
         return feeBps > 50 ? 50 : feeBps;
     }
@@ -321,11 +312,12 @@ contract FeeCalculator is AccessManager {
      * @param takerBps Taker fee in basis points
      * @param makerBps Maker fee in basis points (negative for rebates)
      */
-    function setAssetFeeConfig(
-        address asset,
-        uint256 takerBps,
-        int256 makerBps
-    ) external onlyRole(FEE_MANAGER_ROLE) validFeeBps(takerBps) validRebateBps(makerBps) {
+    function setAssetFeeConfig(address asset, uint256 takerBps, int256 makerBps)
+        external
+        onlyRole(FEE_MANAGER_ROLE)
+        validFeeBps(takerBps)
+        validRebateBps(makerBps)
+    {
         assetFeeConfig[asset] = CommonStructs.FeeConfig(takerBps, makerBps);
         emit FeeConfigUpdated(asset, takerBps, makerBps);
     }
@@ -335,10 +327,11 @@ contract FeeCalculator is AccessManager {
      * @param asset Asset address
      * @param class Asset class
      */
-    function setAssetClass(
-        address asset, 
-        CommonStructs.AssetClass class
-    ) external onlyRole(FEE_MANAGER_ROLE) validAssetClass(class) {
+    function setAssetClass(address asset, CommonStructs.AssetClass class)
+        external
+        onlyRole(FEE_MANAGER_ROLE)
+        validAssetClass(class)
+    {
         assetToClass[asset] = class;
         emit AssetClassUpdated(asset, class);
     }
@@ -349,11 +342,13 @@ contract FeeCalculator is AccessManager {
      * @param takerBps Taker fee in basis points
      * @param makerBps Maker fee in basis points
      */
-    function setDefaultClassFee(
-        CommonStructs.AssetClass class,
-        uint256 takerBps,
-        int256 makerBps
-    ) external onlyRole(FEE_MANAGER_ROLE) validFeeBps(takerBps) validRebateBps(makerBps) validAssetClass(class) {
+    function setDefaultClassFee(CommonStructs.AssetClass class, uint256 takerBps, int256 makerBps)
+        external
+        onlyRole(FEE_MANAGER_ROLE)
+        validFeeBps(takerBps)
+        validRebateBps(makerBps)
+        validAssetClass(class)
+    {
         defaultFeeByClass[class] = CommonStructs.FeeConfig(takerBps, makerBps);
         emit DefaultClassFeeUpdated(class, takerBps, makerBps);
     }
@@ -363,10 +358,7 @@ contract FeeCalculator is AccessManager {
      * @param asset Asset address
      * @param capBps Emergency fee cap in basis points
      */
-    function setEmergencyFeeCap(
-        address asset, 
-        uint256 capBps
-    ) external onlyRole(EMERGENCY_ADMIN) validFeeBps(capBps) {
+    function setEmergencyFeeCap(address asset, uint256 capBps) external onlyRole(EMERGENCY_ADMIN) validFeeBps(capBps) {
         emergencyFeeCaps[asset] = capBps;
         emit EmergencyFeeCapUpdated(asset, capBps);
     }
@@ -383,7 +375,7 @@ contract FeeCalculator is AccessManager {
         emit VolatilityMultiplierUpdated(multiplierBps);
     }
 
-        /**
+    /**
      * @notice Set volume tracker contract address
      * @param tracker Volume tracker contract address
      */
@@ -433,12 +425,12 @@ contract FeeCalculator is AccessManager {
      */
     function _getFeeConfig(address asset) internal view returns (CommonStructs.FeeConfig memory) {
         CommonStructs.FeeConfig memory customConfig = assetFeeConfig[asset];
-        
+
         // Return custom configuration if set
         if (customConfig.takerFeeBps != 0) {
             return customConfig;
         }
-        
+
         // Fallback to asset class default
         CommonStructs.AssetClass assetClass = assetToClass[asset];
         return defaultFeeByClass[assetClass];
@@ -450,45 +442,44 @@ contract FeeCalculator is AccessManager {
     //  * @param volume30d 30-day trading volume
     //  * @return tier User tier (0-3)
     //  */
- function _getUserTier(address user, uint256 volume30d) internal view returns (uint256 tier) {
-    uint256 staked = baobabToken.balanceOf(user);
-    
-    // Tier 3: VIP (requires BOTH $5M volume AND 50k BAOBAB stake)
-    if (volume30d >= tiers[3].minVolume30d && staked >= tiers[3].minStake) {
-        return 3;
-    }
-    
-    // Tier 2: Professional (requires BOTH $1M volume AND 10k BAOBAB stake)
-    if (volume30d >= tiers[2].minVolume30d && staked >= tiers[2].minStake) {
-        return 2;
-    }
-    
-    // Tier 1: Active Trader (requires BOTH $100k volume AND 1k BAOBAB stake)
-    if (volume30d >= tiers[1].minVolume30d && staked >= tiers[1].minStake) {
-        return 1;
-    }
-    
-    // Tier 0: Retail (default, no requirements)
-    return 0;
-}
+    function _getUserTier(address user, uint256 volume30d) internal view returns (uint256 tier) {
+        uint256 staked = baobabToken.balanceOf(user);
 
+        // Tier 3: VIP (requires BOTH $5M volume AND 50k BAOBAB stake)
+        if (volume30d >= tiers[3].minVolume30d && staked >= tiers[3].minStake) {
+            return 3;
+        }
 
-function _getUserTierStruct(address user, uint256 volume30d) 
-    internal view returns (CommonStructs.UserTier memory) 
-    
-{
+        // Tier 2: Professional (requires BOTH $1M volume AND 10k BAOBAB stake)
+        if (volume30d >= tiers[2].minVolume30d && staked >= tiers[2].minStake) {
+            return 2;
+        }
 
+        // Tier 1: Active Trader (requires BOTH $100k volume AND 1k BAOBAB stake)
+        if (volume30d >= tiers[1].minVolume30d && staked >= tiers[1].minStake) {
+            return 1;
+        }
+
+        // Tier 0: Retail (default, no requirements)
+        return 0;
+    }
+
+    function _getUserTierStruct(address user, uint256 volume30d)
+        internal
+        view
+        returns (CommonStructs.UserTier memory)
+    {
         //  Get ACTUAL 30-day volume from VolumeTracker
         volume30d = volumeTracker.get30DayVolume(user);
         // 2. Get BAOBAB stake balance
-    uint256 staked = baobabToken.balanceOf(user);
-    
-    // 3. Check from highest tier to lowest
-    for (uint256 i = tiers.length - 1; i >= 1; i--) {
-        if (volume30d >= tiers[i].minVolume30d && staked >= tiers[i].minStake) {
-            return tiers[i];
+        uint256 staked = baobabToken.balanceOf(user);
+
+        // 3. Check from highest tier to lowest
+        for (uint256 i = tiers.length - 1; i >= 1; i--) {
+            if (volume30d >= tiers[i].minVolume30d && staked >= tiers[i].minStake) {
+                return tiers[i];
+            }
         }
+        return tiers[0];
     }
-    return tiers[0];
-}
 }

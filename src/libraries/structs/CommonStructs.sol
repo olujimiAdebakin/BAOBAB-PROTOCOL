@@ -424,7 +424,7 @@ library CommonStructs {
         bool isValid;
     }
 
-        /**
+    /**
      * @notice Position ranking for ADL queue
      * @param positionId Position identifier
      * @param trader Trader address

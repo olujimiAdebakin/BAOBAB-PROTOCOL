@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {CommonStructs} from "../../libraries/structs/CommonStructs.sol";
 import {AddressUtils} from "../../libraries/utils/AddressUtils.sol";
 
-
 /**
  * @title OrderStorage
  * @notice Stores and manages all limit/stop orders for BAOBAB
