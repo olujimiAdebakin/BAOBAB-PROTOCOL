@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {CommonStructs} from "../libraries/structs/CommonStructs.sol";
 
-
 interface IMarketRegistry {
     // Market registration & management
     function registerMarket(
@@ -17,6 +16,12 @@ interface IMarketRegistry {
         uint256 maxOpenInterest,
         uint16 tradingFeeBps
     ) external returns (bytes32 marketId);
+
+    /**
+     * @notice Resolve marketId by hashed base asset symbol
+     * @dev Returns bytes32(0) if not found
+     */
+    function baseAssetHashToMarketId(bytes32 baseAssetHash) external view returns (bytes32);
 
     function setQuoteAsset(bytes32 marketId, address quoteAssetAddress) external;
 
