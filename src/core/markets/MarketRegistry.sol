@@ -64,6 +64,9 @@ contract MarketRegistry is SecurityBase {
     /// @notice Base asset address for each market (optional, for advanced features)
     mapping(bytes32 => address) public marketBaseAsset;
 
+    /// @notice Reverse lookup: base asset hash → marketId
+    mapping(bytes32 => bytes32) public baseAssetHashToMarketId;
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
     //                                          EVENTS
     // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -220,6 +223,11 @@ contract MarketRegistry is SecurityBase {
         uint256 maxOpenInterest,
         uint16 tradingFeeBps
     ) external onlyAdmin returns (bytes32 marketId) {
+        //     bytes32 baseAssetHash = keccak256(bytes(baseAsset));
+
+        //    if (baseAssetHashToMarketId[baseAssetHash] != bytes32(0)) {
+        //      revert MarketRegistry__MarketAlreadyExists();
+        //    }
         // Validate leverage
         if (maxLeverage < 1 || maxLeverage > 100) revert MarketRegistry__InvalidLeverage();
 
@@ -236,6 +244,14 @@ contract MarketRegistry is SecurityBase {
 
         // Check market doesn't already exist
         if (marketExists[marketId]) revert MarketRegistry__MarketAlreadyExists();
+
+        // Base asset hash
+        bytes32 baseAssetHash = keccak256(bytes(baseAsset));
+
+        // Enforce uniqueness
+        if (baseAssetHashToMarketId[baseAssetHash] != bytes32(0)) {
+            revert MarketRegistry__MarketAlreadyExists();
+        }
 
         // Create and store market
         markets[marketId] = CommonStructs.Market({
@@ -258,6 +274,9 @@ contract MarketRegistry is SecurityBase {
             tradingFeeBps: tradingFeeBps,
             fundingRateCoefficient: 1e18 // Default coefficient
         });
+
+        // Store reverse index (🔥 this is the key line)
+        baseAssetHashToMarketId[baseAssetHash] = marketId;
 
         // Mark market as existing and add to enumeration
         marketExists[marketId] = true;
