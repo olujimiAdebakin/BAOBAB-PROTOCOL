@@ -148,7 +148,8 @@ contract PythAdapter is IPriceFeed {
      */
     function _scalePrice(int64 price, int32 expo) internal pure returns (int256) {
     int256 scaledPrice = int256(price);
-    int32 scaleFactor = expo + 8;  // How many decimals to adjust
+    // How many decimals to adjust
+    int32 scaleFactor = expo + 8;  
     
     if (scaleFactor > 0) {
         // Need to multiply (add decimals)
@@ -156,10 +157,10 @@ contract PythAdapter is IPriceFeed {
         scaledPrice = scaledPrice * int256(10**power);
     } else if (scaleFactor < 0) {
         // Need to divide (remove decimals)
-        uint32 power = uint32(-scaleFactor);  // Convert negative to positive
+        uint32 power = uint32(-scaleFactor);  // Converting negative to positive
         scaledPrice = scaledPrice / int256(10**power);
     }
-    // scaleFactor == 0: already at 8 decimals
+    // NB: if scaleFactor == 0: already at 8 decimals
     
     return scaledPrice;
 }
